@@ -1,0 +1,12 @@
+// Project tasks configuration. See https://zed.dev/docs/tasks for documentation.
+
+[
+  {
+    "label": "Run dev",
+    "command": "npm run tauri dev",
+  },
+  {
+    "label": "Build release",
+    "command": "npm run tauri build",
+  },
+]

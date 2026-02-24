@@ -1,0 +1,29 @@
+CREATE TABLE IF NOT EXISTS file (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    path             TEXT NOT NULL UNIQUE,
+    type             TEXT NOT NULL CHECK (type IN ('DOC', 'IMG', 'VID', 'AUD'))
+);
+
+CREATE TABLE IF NOT EXISTS file_metadata (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id          INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    meta_key         TEXT NOT NULL,
+    meta_value       TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_file_metadata_file_id_meta_key ON file_metadata(file_id, meta_key);
+
+CREATE TABLE IF NOT EXISTS emb_type (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind             TEXT NOT NULL,
+    model_name       TEXT NOT NULL,
+    CONSTRAINT       uq_emb_kind_model_name UNIQUE (kind, model_name)
+);
+
+CREATE TABLE IF NOT EXISTS emb_metadata (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_id          INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
+    emb_type_id      INTEGER NOT NULL REFERENCES emb_type(id) ON DELETE RESTRICT,
+    file_modified_at REAL NOT NULL,
+    file_last_size   INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_emb_metadata_file_id_emb_type_id ON emb_metadata(file_id, emb_type_id);
