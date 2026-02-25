@@ -9,7 +9,7 @@ use sqlite_vec::sqlite3_vec_init;
 static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 
 pub struct Database {
-    conn: Mutex<Connection>,
+    conn: Mutex<Option<Connection>>,
 }
 
 impl Database {
@@ -24,7 +24,7 @@ impl Database {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
 
-        let _ = Migrations::from_directory(&MIGRATIONS_DIR)?.to_latest(&mut conn);
+        Migrations::from_directory(&MIGRATIONS_DIR)?.to_latest(&mut conn)?;
 
         // print!(
         //     "{}",
@@ -32,7 +32,17 @@ impl Database {
         // );
 
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Mutex::new(Some(conn)),
         })
+    }
+
+    pub fn close(&self) {
+        if let Ok(mut conn) = self.conn.lock() {
+            if let Some(conn) = conn.take() {
+                let _ = conn.execute_batch("PRAGMA optimize;");
+                let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
+                let _ = conn.close();
+            }
+        }
     }
 }
