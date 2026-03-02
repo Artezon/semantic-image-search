@@ -1,18 +1,23 @@
-use crate::db;
 use crate::db::Database;
+use crate::dylib::preload_libs;
 use crate::models;
 use std::fs;
-use std::path::PathBuf;
-use std::sync::RwLock;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Mutex, RwLock};
 
 const PATH_CONFIG: &'static str = "config.json";
 const PATH_DB: &'static str = "index.db";
+const PATH_MODELS_DIR: &'static str = "models";
 
 pub struct AppState {
     pub data_path: PathBuf,
     pub config: RwLock<Config>,
-    pub db: db::Database,
-    pub model: RwLock<Option<models::MetaCLip2Model>>,
+    pub db: Database,
+    pub model_manager: models::ModelManager,
+    pub selected_model: &'static models::ModelManifest,
+    pub is_indexing: Mutex<bool>,
+    pub indexing_stopped: AtomicBool,
 }
 
 impl AppState {
@@ -32,18 +37,28 @@ impl AppState {
 
         fs::create_dir_all(&data_path).unwrap();
 
-        let db = match Database::new(&data_path.join(PATH_DB).display().to_string()) {
+        let db = match Database::new(&data_path.join(PATH_DB).to_string_lossy()) {
             Ok(db) => db,
             Err(e) => {
                 panic!("Failed to load database: {}", e);
             }
         };
 
+        db.clear_orphan_vecs().unwrap();
+
+        preload_libs(&data_path.join("lib"));
+
+        let model_manager = models::ModelManager::new(data_path.join(PATH_MODELS_DIR));
+        let selected_model = &models::metaclip2::MANIFEST;
+
         Self {
             config: RwLock::new(Config::load(&data_path.join(PATH_CONFIG))),
-            model: RwLock::new(None),
+            model_manager,
+            selected_model,
+            is_indexing: Mutex::new(false),
             db,
             data_path,
+            indexing_stopped: AtomicBool::new(false),
         }
     }
 
@@ -54,7 +69,7 @@ impl AppState {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct Config {}
+pub struct Config {}
 
 impl Default for Config {
     fn default() -> Self {
@@ -63,7 +78,7 @@ impl Default for Config {
 }
 
 impl Config {
-    fn load(config_json_path: &PathBuf) -> Self {
+    fn load(config_json_path: &Path) -> Self {
         match std::fs::read_to_string(config_json_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
@@ -77,7 +92,7 @@ impl Config {
         }
     }
 
-    fn save(&self, config_json_path: &PathBuf) {
+    fn save(&self, config_json_path: &Path) {
         std::fs::write(
             config_json_path,
             serde_json::to_string_pretty(self).unwrap(),

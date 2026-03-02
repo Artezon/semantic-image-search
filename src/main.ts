@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, message } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 
 const appWindow = getCurrentWindow();
 
@@ -10,7 +11,11 @@ document.getElementById("titlebar-maximize")!.onclick =
   appWindow.toggleMaximize;
 document.getElementById("titlebar-close")!.onclick = appWindow.close;
 
-window.onload = () => setTimeout(appWindow.show, 100);
+window.onload = () => {
+  setTimeout(appWindow.show, 100);
+  invoke("get_index_status");
+  invoke("get_model_status");
+};
 
 document.oncontextmenu = (event) => {
   const targetElement = event.target as HTMLElement;
@@ -100,10 +105,48 @@ const thumbnailObserver = new IntersectionObserver(
   },
 );
 
+interface Message {
+  title: string;
+  msg: string;
+  kind: "info" | "error" | "warning";
+}
+
+interface ModelStatus {
+  status: "neutral" | "success" | "error";
+  status_text: string;
+  device_text: string;
+}
+
+interface IndexStatus {
+  progress: number;
+  text: string;
+}
+
+async function setupListeners() {
+  await listen<Message>("message", (event) => {
+    const { title, msg, kind } = event.payload;
+    showMessage(title, msg, kind);
+  });
+  await listen<ModelStatus>("model-status", (event) => {
+    const { status, status_text, device_text } = event.payload;
+    updateModelStatus(status, status_text, device_text);
+  });
+  await listen<IndexStatus>("index-status", (event) => {
+    const { progress, text } = event.payload;
+    updateIndexStatus(progress, text);
+  });
+  await listen<boolean>("is-indexing", (event) => {
+    const indexing = event.payload;
+    setIndexingButtonState(indexing);
+  });
+}
+
+setupListeners();
+
 async function showMessage(
   title: string,
   msg: string,
-  kind: "error" | "info" | "warning" | undefined = "info",
+  kind: "info" | "error" | "warning" | undefined = "info",
 ): Promise<void> {
   await message(msg, { title: title, kind: kind });
 }
@@ -143,30 +186,55 @@ async function browseImage(): Promise<void> {
 }
 
 function updateModelStatus(
-  status: string,
-  color: string,
-  device: string,
+  status: "neutral" | "success" | "error",
+  statusText: string,
+  deviceText: string,
 ): void {
-  modelStatus.textContent = status;
-  modelStatus.style.color = color;
-  deviceLabel.textContent = `Device: ${device}`;
+  switch (status) {
+    case "neutral":
+      modelStatus.style.color = "var(--text-secondary)";
+      break;
+    case "success":
+      modelStatus.style.color = "var(--text-success)";
+      break;
+    case "error":
+      modelStatus.style.color = "var(--text-failure)";
+  }
+
+  modelStatus.textContent = statusText;
+  deviceLabel.textContent = `Device: ${deviceText ? deviceText : "unknown"}`;
 }
 
 function updateIndexStatus(progress: number, text: string): void {
-  indexButton.style.setProperty("--progress", `${progress * 100}%`);
+  if (progress !== null) setProgress(indexButton, progress, 0.1);
   indexStatus.textContent = text;
+}
+
+function setProgress(pBar: HTMLElement, progress: number, anim: number = 0) {
+  progress *= 100;
+  const prev = parseFloat(pBar.style.getPropertyValue("--progress")) || 0;
+  if (anim > 0 && progress > prev) {
+    pBar.style.setProperty("--progress-transition", `${anim}s linear`);
+  } else {
+    pBar.style.setProperty("--progress-transition", "none");
+  }
+  pBar.style.setProperty("--progress", `${progress}%`);
 }
 
 async function handleIndexingButton(): Promise<void> {
   if (isIndexing) {
+    indexButtonText.textContent = "Stopping...";
     await invoke("stop_indexing");
   } else {
-    await invoke("process_directory");
     updateIndexStatus(0, "Preparing...");
+    await invoke("index_directory", {
+      dir: indexDirInput.value,
+      batchSize: Number(indexBatchSize.value),
+    });
   }
 }
 
-function setProcessingButtonState(indexing: boolean): void {
+function setIndexingButtonState(indexing: boolean): void {
   isIndexing = indexing;
 
   indexButtonIcon.innerHTML = indexing ? icons.stop : icons.generate;

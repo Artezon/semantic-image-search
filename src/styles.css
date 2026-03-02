@@ -126,10 +126,12 @@ body {
     width: 320px;
     background-color: var(--surface-container);
     padding: 20px;
+    overflow-x: hidden;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    overflow-wrap: break-word;
 }
 
 .divider {
@@ -245,18 +247,20 @@ textarea:focus {
 }
 
 .progress-btn {
-    --progress: 0%;
+    --progress: 100%;
+    --progress-transition: none;
     position: relative;
     background-color: var(--outline);
     overflow: hidden;
 }
 
-.btn.progress-btn::before {
+.progress-btn::before {
     content: "";
     position: absolute;
     inset: 0;
     width: var(--progress);
     background: var(--primary);
+    transition: width var(--progress-transition);
 }
 
 .progress-btn svg,

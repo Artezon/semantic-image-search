@@ -1,13 +1,21 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app;
 mod db;
+mod dylib;
 mod models;
 mod state;
+mod utils;
 
-use tauri::{webview, window, Builder, Manager, WebviewUrl, WebviewWindowBuilder};
+#[cfg(feature = "heif")]
+use libheif_rs::integration::image::register_all_decoding_hooks;
+use tauri::{Builder, Manager, WebviewUrl, WebviewWindowBuilder, webview, window};
 
 fn main() {
+    #[cfg(feature = "heif")]
+    register_all_decoding_hooks();
+
     Builder::default()
         .setup(|app| {
             app.manage(state::AppState::new(app.handle()));
@@ -29,7 +37,12 @@ fn main() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        // .invoke_handler(tauri::generate_handler![greet, func2])
+        .invoke_handler(tauri::generate_handler![
+            app::get_index_status,
+            app::get_model_status,
+            app::index_directory,
+            app::stop_indexing,
+        ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {

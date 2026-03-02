@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS emb_metadata (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id          INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     emb_type_id      INTEGER NOT NULL REFERENCES emb_type(id) ON DELETE RESTRICT,
-    file_modified_at REAL NOT NULL,
-    file_last_size   INTEGER NOT NULL
+    last_file_mtime  REAL NOT NULL,
+    last_file_size   INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_emb_metadata_file_id_emb_type_id ON emb_metadata(file_id, emb_type_id);

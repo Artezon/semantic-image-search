@@ -3,7 +3,7 @@ name = "semantic-search"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["Artezon"]
-edition = "2021"
+edition = "2024"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -19,10 +19,32 @@ sqlite-vec = "0.1"
 rusqlite_migration = { version = "2.4", features = ["from-directory"] }
 include_dir = "0.7"
 anyhow = "1"
+image = "0.25"
+fast_image_resize = { version = "6", features = ["image"] }
+ndarray = "0.17"
+ort = "2.0.0-rc.11"
+rayon = "1"
+tokenizers = "0.22"
+walkdir = "2"
+zerocopy = "0.8"
+indoc = "2"
+libheif-rs = { version = "~2.7", features = ["image", "embedded-libheif"], optional = true }
+libloading = "0.9"
 
 [features]
-default = ["portable"]
+default = ["portable", "dynamic-ort", "cuda"]
 portable = []
+dynamic-ort = ["ort/load-dynamic"]
+cuda = ["ort/cuda"]
+heif = ["libheif-rs"]
+
+[package.metadata.vcpkg]
+git = "https://github.com/microsoft/vcpkg"
+tag = "2026.01.16"
+install = ["libheif"]
+
+[package.metadata.vcpkg.target]
+x86_64-pc-windows-msvc = { triplet = "x64-windows-static", dependencies = ["libheif"] }
 
 [profile.release-opt]
 inherits = "release"

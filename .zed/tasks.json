@@ -6,7 +6,15 @@
     "command": "npm run tauri dev",
   },
   {
-    "label": "Build release",
+    "label": "Build release (faster)",
     "command": "npm run tauri build",
+  },
+  {
+    "label": "Build release (distribution)",
+    "command": "npm run tauri build -- -- -- --profile release-opt",
+  },
+  {
+    "label": "Build vcpkg",
+    "command": "cargo install cargo-vcpkg; cargo vcpkg -v build --manifest-path src-tauri/Cargo.toml",
   },
 ]
