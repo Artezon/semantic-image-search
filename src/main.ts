@@ -88,8 +88,11 @@ let searchType = document.querySelector<HTMLInputElement>(
 document.getElementById("index-dir-browse-btn")!.onclick = browseDirectory;
 indexButton.onclick = handleIndexingButton;
 document.getElementById("query-img-browse-btn")!.onclick = browseImage;
-maxResultsInput.onchange = enforceMinMax;
 document.getElementById("search-btn")!.onclick = search;
+
+indexBatchSize.onchange = enforceMinMax;
+maxResultsInput.onchange = enforceMinMax;
+thresholdInput.onchange = enforceMinMax;
 
 const thumbnailObserver = new IntersectionObserver(
   (entries) => {
@@ -167,14 +170,15 @@ function onSearchTypeChange(event: Event): void {
 
 function enforceMinMax(event: Event) {
   const input = event.target as HTMLInputElement;
-  if (input.value != "") {
-    if (parseInt(input.value) < parseInt(input.min)) {
-      input.value = input.min;
-    }
-    if (parseInt(input.value) > parseInt(input.max)) {
-      input.value = input.max;
-    }
+  if (!input.value) {
+    input.value = input.defaultValue;
+    return;
   }
+  const min = Number(input.min);
+  const max = Number(input.max);
+  let value = Number(input.value);
+  if (value < min) input.value = input.min;
+  else if (value > max) input.value = input.max;
 }
 
 async function browseDirectory(): Promise<void> {
