@@ -1,5 +1,6 @@
 use crate::{
     db::{FileEmbResult, FileType, SearchResult},
+    dylib::preload_libs,
     models::{EmbeddingKind, ModelManifest, VisualSearchModel},
     state::AppState,
     utils::format_seconds,
@@ -156,6 +157,8 @@ pub async fn get_model_status(app_handle: AppHandle) {
     let model = Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
 
     let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        preload_libs(&state.data_path.join("lib"));
+
         let mut model_context = model.write().unwrap();
         model_context.load_text_encoder()?;
         model_context.load_vision_encoder()

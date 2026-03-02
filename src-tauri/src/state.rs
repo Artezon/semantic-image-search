@@ -1,5 +1,4 @@
 use crate::db::Database;
-use crate::dylib::preload_libs;
 use crate::models;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -45,8 +44,6 @@ impl AppState {
         };
 
         db.clear_orphan_vecs().unwrap();
-
-        preload_libs(&data_path.join("lib"));
 
         let model_manager = models::ModelManager::new(data_path.join(PATH_MODELS_DIR));
         let selected_model = &models::metaclip2::MANIFEST;
