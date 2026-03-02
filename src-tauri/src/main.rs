@@ -4,6 +4,7 @@
 mod app;
 mod db;
 mod dylib;
+mod handlers;
 mod models;
 mod state;
 mod utils;
@@ -37,12 +38,7 @@ fn main() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            app::get_index_status,
-            app::get_model_status,
-            app::index_directory,
-            app::stop_indexing,
-        ])
+        .invoke_handler(get_handlers!())
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {

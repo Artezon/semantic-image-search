@@ -171,6 +171,29 @@ h2 {
     text-align: center;
 }
 
+.splash {
+    position: absolute;
+    top: 25px;
+    right: 60px;
+
+    color: #ffeb3b;
+    font-size: 12px;
+    font-weight: bold;
+
+    transform: rotate(-15deg);
+    transform-origin: center;
+
+    text-shadow:
+        -1px -1px 1px #000,
+        1px -1px 1px #000,
+        -1px 1px 1px #000,
+        1px 1px 1px #000,
+        -2px -2px 5px rgba(0, 0, 0, 0.3),
+        2px -2px 5px rgba(0, 0, 0, 0.3),
+        -2px 2px 5px rgba(0, 0, 0, 0.3),
+        2px 2px 5px rgba(0, 0, 0, 0.3);
+}
+
 .status-text {
     font-size: 12px;
     color: var(--text-secondary);

@@ -1,5 +1,5 @@
 use crate::{
-    db::FileEmbResult,
+    db::{FileEmbResult, FileType, SearchResult},
     models::{EmbeddingKind, ModelManifest, VisualSearchModel},
     state::AppState,
     utils::format_seconds,
@@ -18,21 +18,6 @@ use walkdir::WalkDir;
 
 static IMAGE_EXTENSIONS: [&str; 8] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "heic"];
 static VIDEO_EXTENSIONS: [&str; 8] = ["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "mpeg"];
-
-#[derive(PartialEq)]
-pub enum FileType {
-    IMG,
-    // VID,
-}
-
-impl FileType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::IMG => "IMG",
-            // Self::VID => "VID",
-        }
-    }
-}
 
 struct FileList {
     paths: Vec<PathBuf>,
@@ -144,6 +129,10 @@ fn clear_index_status(app_handle: &AppHandle) {
 
 fn set_is_indexing(app_handle: &AppHandle, is_indexing: bool) {
     let _ = app_handle.emit("is-indexing", is_indexing).unwrap();
+}
+
+fn clear_results(app_handle: &AppHandle) {
+    let _ = app_handle.emit("clear-results", ()).unwrap();
 }
 
 #[command]
@@ -497,4 +486,83 @@ fn dir_indexing(
 pub async fn stop_indexing(state: State<'_, AppState>) -> Result<(), ()> {
     state.indexing_stopped.store(true, Ordering::Relaxed);
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SearchInputType {
+    Text,
+    Image,
+}
+
+#[command]
+pub async fn search(
+    app_handle: AppHandle,
+    search_type: SearchInputType,
+    query: String,
+    max_results: u32,
+    threshold: f32,
+) -> Result<Vec<SearchResult>, String> {
+    let state = app_handle.state::<AppState>();
+    let selected_model_manifest = state.selected_model;
+    let selected_visual_model =
+        Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
+    let model_id = selected_model_manifest.name;
+    let selected_kind = EmbeddingKind::Visual; // Currently only visual supported
+    let emb_type_id = state
+        .db
+        .get_emb_type_id(selected_model_manifest, &selected_kind)
+        .map_err(|e| e.to_string())?;
+
+    let query_embedding = match search_type {
+        SearchInputType::Text => {
+            if !selected_visual_model
+                .read()
+                .unwrap()
+                .is_text_encoder_loaded()
+            {
+                return Err("Model not ready".to_string());
+            }
+
+            selected_visual_model
+                .write()
+                .unwrap()
+                .embed_text(&query)
+                .map_err(|e| e.to_string())
+        }
+        SearchInputType::Image => {
+            if !selected_visual_model
+                .read()
+                .unwrap()
+                .is_vision_encoder_loaded()
+            {
+                return Err("Model not ready".to_string());
+            }
+
+            let path = PathBuf::from(&query);
+            if !path.is_file() {
+                return Err("Please select a valid image as search query".to_string());
+            }
+
+            selected_visual_model
+                .write()
+                .unwrap()
+                .embed_images(&[path])?
+                .remove(0)
+                .1
+                .map_err(|e| format!("Can't open query image: {}", e))
+        }
+    }?
+    .to_vec();
+
+    state
+        .db
+        .search_embeddings(
+            query_embedding,
+            model_id,
+            emb_type_id,
+            max_results,
+            threshold,
+        )
+        .map_err(|e| e.to_string())
 }

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { open, message } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -64,9 +64,9 @@ const resultsContainer = document.getElementById("results-container")!;
 
 type SearchResult = {
   path: string;
-  file_type: "IMG" | "VID";
-  score: number;
   filename: string;
+  fileType: "DOC" | "IMG" | "VID" | "AUD";
+  score: number;
 };
 
 interface SearchResultCard extends HTMLDivElement {
@@ -88,6 +88,7 @@ let searchType = document.querySelector<HTMLInputElement>(
 document.getElementById("index-dir-browse-btn")!.onclick = browseDirectory;
 indexButton.onclick = handleIndexingButton;
 document.getElementById("query-img-browse-btn")!.onclick = browseImage;
+maxResultsInput.onchange = enforceMinMax;
 document.getElementById("search-btn")!.onclick = search;
 
 const thumbnailObserver = new IntersectionObserver(
@@ -101,7 +102,7 @@ const thumbnailObserver = new IntersectionObserver(
   },
   {
     root: rightPanel,
-    rootMargin: "200px 0px",
+    rootMargin: "500px 0px",
   },
 );
 
@@ -139,6 +140,9 @@ async function setupListeners() {
     const indexing = event.payload;
     setIndexingButtonState(indexing);
   });
+  await listen("clear-results", () => {
+    clearResults();
+  });
 }
 
 setupListeners();
@@ -158,6 +162,18 @@ function onSearchTypeChange(event: Event): void {
 
     searchByTextContainer.classList.toggle("hidden", searchType !== "text");
     searchByImageContainer.classList.toggle("hidden", searchType !== "image");
+  }
+}
+
+function enforceMinMax(event: Event) {
+  const input = event.target as HTMLInputElement;
+  if (input.value != "") {
+    if (parseInt(input.value) < parseInt(input.min)) {
+      input.value = input.min;
+    }
+    if (parseInt(input.value) > parseInt(input.max)) {
+      input.value = input.max;
+    }
   }
 }
 
@@ -244,17 +260,41 @@ function setIndexingButtonState(indexing: boolean): void {
 }
 
 async function search(): Promise<void> {
-  const query = searchType === "text" ? queryText.value : queryImage.value;
+  let query = searchType === "text" ? queryText.value : queryImage.value;
+  query = query.trim();
+
+  if (!query) {
+    clearResults();
+    showMessage("Empty query", "Please enter query to search.");
+    return;
+  }
 
   const maxResults = Number(maxResultsInput.value);
   const threshold = Number(thresholdInput.value);
 
-  await invoke("search", {
-    searchType,
-    query,
-    maxResults,
-    threshold,
-  });
+  if (maxResults < 1 || maxResults > 4096) {
+    clearResults();
+    showMessage(
+      "Invalid threshold value",
+      "Only values between 1 and 4096 are supported.",
+    );
+    return;
+  }
+
+  searchingNow();
+
+  try {
+    const results = await invoke<Array<SearchResult>>("search", {
+      searchType,
+      query,
+      maxResults,
+      threshold,
+    });
+    displayResults(results);
+  } catch (e) {
+    clearResults();
+    showMessage("Search error", e as string, "error");
+  }
 }
 
 function searchingNow() {
@@ -282,44 +322,60 @@ function populateCard(
   result: SearchResult,
   thumbnailSrc: string,
 ): void {
-  card.classList.remove("loading-card");
-
-  card.innerHTML = `
-    <img src="${thumbnailSrc}" loading="lazy" alt="${result.filename}">
-    ${result.file_type === "VID" ? '<div class="video-indicator"></div>' : ""}
-    <div class="result-card-overlay">
-      <div class="result-card-title">${result.filename}</div>
-      <div class="result-card-score">
-        Score: ${result.score.toFixed(4)}
+  const img = document.createElement("img");
+  img.alt = result.filename;
+  img.onload = () => {
+    card.classList.remove("loading-card");
+    card.innerHTML = "";
+    card.appendChild(img);
+    if (result.fileType === "VID") {
+      const indicator = document.createElement("div");
+      indicator.className = "video-indicator";
+      card.appendChild(indicator);
+    }
+    card.innerHTML += `
+      <div class="result-card-overlay">
+        <div class="result-card-title">${result.filename}</div>
+        <div class="result-card-score">Score: ${result.score.toFixed(4)}</div>
       </div>
-    </div>
-  `;
+    `;
+  };
+  img.onerror = () => showThumbnailError(card, result);
+  img.src = thumbnailSrc;
 }
 
 function loadThumbnail(card: SearchResultCard) {
   const result = card.result;
 
-  invoke<{
-    bytes?: Uint8Array;
-    mime?: string;
-  }>("get_thumbnail", {
-    path: result.path,
-    fileType: result.file_type,
-  })
-    .then((thumbData) => {
-      if (thumbData?.bytes) {
-        const blob = new Blob([thumbData.bytes], { type: thumbData.mime });
-        const url = URL.createObjectURL(blob);
-
-        populateCard(card, result, url);
-        card.thumbUrl = url;
-      } else {
-        showThumbnailError(card, result);
-      }
+  if (result.fileType === "IMG") {
+    const src = convertFileSrc(result.path);
+    populateCard(card, result, src);
+    card.thumbUrl = src;
+  } else if (result.fileType === "VID") {
+    invoke<{
+      bytes?: Uint8Array;
+      mime?: string;
+    }>("get_thumbnail", {
+      path: result.path,
+      fileType: result.fileType,
     })
-    .catch(() => {
-      showThumbnailError(card, result);
-    });
+      .then((thumbData) => {
+        if (thumbData?.bytes) {
+          const blob = new Blob([thumbData.bytes], { type: thumbData.mime });
+          const url = URL.createObjectURL(blob);
+
+          populateCard(card, result, url);
+          card.thumbUrl = url;
+        } else {
+          showThumbnailError(card, result);
+        }
+      })
+      .catch(() => {
+        showThumbnailError(card, result);
+      });
+  } else {
+    showThumbnailError(card, result);
+  }
 }
 
 async function displayResults(results: SearchResult[] | null): Promise<void> {

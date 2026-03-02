@@ -1,4 +1,3 @@
-use crate::app::FileType;
 use crate::models::{EmbeddingKind, ModelManifest};
 use anyhow::{Result, anyhow};
 use include_dir::{Dir, include_dir};
@@ -16,6 +15,21 @@ use zerocopy::IntoBytes;
 
 static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 
+#[derive(PartialEq)]
+pub enum FileType {
+    IMG,
+    // VID,
+}
+
+impl FileType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::IMG => "IMG",
+            // Self::VID => "VID",
+        }
+    }
+}
+
 pub struct FileEmbResult {
     pub file_id: i64,
     pub embeddings: Vec<EmbMetadata>,
@@ -27,6 +41,15 @@ pub struct EmbMetadata {
     pub emb_type_id: u32,
     pub last_file_mtime: f64,
     pub last_file_size: i64,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResult {
+    pub path: String,
+    pub filename: String,
+    pub file_type: String,
+    pub score: f32,
 }
 
 pub struct Database {
@@ -278,6 +301,65 @@ impl Database {
 
             tx.commit()?;
             Ok(())
+        })
+    }
+
+    pub fn search_embeddings(
+        &self,
+        query_vec: Vec<f32>,
+        emb_model: &str,
+        emb_type_id: u32,
+        max_results: u32,
+        threshold: f32,
+    ) -> Result<Vec<SearchResult>> {
+        self.with_conn(|conn: &mut Connection| {
+            let sql = formatdoc!(
+                "
+                SELECT
+                    file.id AS file_id,
+                    file.path AS path,
+                    file.type AS type,
+                    1 - vec_distance_cosine(vec_table.vec, ?1) AS cosine_similarity
+                FROM vec_{} AS vec_table
+                JOIN emb_metadata
+                    ON emb_metadata.id = vec_table.emb_id
+                JOIN file
+                    ON file.id = emb_metadata.file_id
+                WHERE
+                    emb_metadata.emb_type_id = ?2
+                    AND vec_table.vec MATCH ?1
+                    AND k = ?3
+                ORDER BY cosine_similarity DESC
+                ",
+                emb_model
+            );
+
+            let mut stmt = conn.prepare(&sql)?;
+            let results = stmt
+                .query_map(
+                    params![query_vec.as_bytes(), emb_type_id, max_results],
+                    |row| {
+                        let path = row.get::<_, String>(1)?;
+                        let file_type = row.get::<_, String>(2)?;
+                        let score = row.get::<_, f32>(3)?;
+                        let filename = std::path::Path::new(&path)
+                            .file_name()
+                            .and_then(|f| f.to_str())
+                            .unwrap_or("")
+                            .to_string();
+                        Ok(SearchResult {
+                            path,
+                            filename,
+                            file_type,
+                            score,
+                        })
+                    },
+                )?
+                .filter_map(|r| r.ok())
+                .filter(|r| r.score >= threshold)
+                .collect();
+
+            Ok(results)
         })
     }
 

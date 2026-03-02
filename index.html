@@ -63,6 +63,7 @@
             <div class="left-panel">
                 <div class="column-titlebar">
                     <h1 class="centered-text">Media Search</h1>
+                    <div class="splash">v0.1-alpha</div>
                 </div>
 
                 <div class="status-text" id="model-status">
@@ -180,7 +181,13 @@
 
                 <div class="param-row">
                     <label>Max results:</label>
-                    <input type="number" id="max-results" value="50" />
+                    <input
+                        type="number"
+                        id="max-results"
+                        value="100"
+                        min="1"
+                        max="4096"
+                    />
                 </div>
 
                 <div class="param-row">
