@@ -1,10 +1,10 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod app;
+mod commands;
 mod db;
 mod dylib;
-mod handlers;
+mod frontend;
 mod models;
 mod state;
 mod utils;
@@ -12,6 +12,7 @@ mod utils;
 #[cfg(feature = "heif")]
 use libheif_rs::integration::image::register_all_decoding_hooks;
 use tauri::{Builder, Manager, WebviewUrl, WebviewWindowBuilder, webview, window};
+use tauri_plugin_window_state::StateFlags;
 
 fn main() {
     #[cfg(feature = "heif")]
@@ -20,6 +21,13 @@ fn main() {
     Builder::default()
         .setup(|app| {
             app.manage(state::AppState::new(app.handle()));
+
+            #[cfg(desktop)]
+            app.handle().plugin(
+                tauri_plugin_window_state::Builder::new()
+                    .with_state_flags(StateFlags::all() & !StateFlags::VISIBLE)
+                    .build(),
+            )?;
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("Media Search")

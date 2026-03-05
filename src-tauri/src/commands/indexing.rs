@@ -1,11 +1,13 @@
 use crate::{
-    db::{FileEmbResult, FileType, SearchResult},
-    dylib::preload_libs,
+    db::{FileEmbResult, FileType},
+    frontend::{
+        MessageKind, clear_index_status, set_is_indexing, show_message,
+        update_index_processing_status, update_index_status,
+    },
     models::{EmbeddingKind, ModelManifest, VisualSearchModel},
     state::AppState,
     utils::format_seconds,
 };
-use serde::{Deserialize, Serialize};
 use std::{
     fmt::Write,
     ops::Deref,
@@ -14,182 +16,22 @@ use std::{
     time::Duration,
     time::Instant,
 };
-use tauri::{AppHandle, Emitter, Manager, State, command};
+use tauri::{AppHandle, Manager, State, command};
 use walkdir::WalkDir;
 
-static IMAGE_EXTENSIONS: [&str; 8] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "heic"];
+#[cfg(not(feature = "heif"))]
+static IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff"];
+#[cfg(feature = "heif")]
+static IMAGE_EXTENSIONS: [&str; 10] = [
+    "jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "heic", "heif", "avif",
+];
+
 static VIDEO_EXTENSIONS: [&str; 8] = ["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "mpeg"];
 
 struct FileList {
     paths: Vec<PathBuf>,
     batch_size: u32,
     file_type: FileType,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-enum MessageKind {
-    #[default]
-    Info,
-    Error,
-    Warning,
-}
-
-#[derive(Clone, Serialize, Default)]
-struct MessagePayload {
-    title: String,
-    msg: String,
-    kind: MessageKind,
-}
-
-#[derive(Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-enum ModelStatus {
-    #[default]
-    Neutral,
-    Success,
-    Error,
-}
-
-#[derive(Clone, Serialize, Default)]
-struct ModelStatusPayload {
-    status: ModelStatus,
-    status_text: String,
-    device_text: String,
-}
-
-#[derive(Clone, Serialize, Default)]
-struct IndexStatusPayload {
-    progress: Option<f32>,
-    text: String,
-}
-
-fn show_message(app_handle: &AppHandle, title: &str, msg: &str, kind: MessageKind) {
-    let _ = app_handle
-        .emit(
-            "message",
-            &MessagePayload {
-                title: title.to_string(),
-                msg: msg.to_string(),
-                kind,
-            },
-        )
-        .unwrap();
-}
-
-fn update_model_status(
-    app_handle: &AppHandle,
-    status: ModelStatus,
-    status_text: &str,
-    device_text: &str,
-) {
-    let _ = app_handle
-        .emit(
-            "model-status",
-            &ModelStatusPayload {
-                status,
-                status_text: status_text.to_string(),
-                device_text: device_text.to_string(),
-            },
-        )
-        .unwrap();
-}
-
-fn update_model_status_from_payload(app_handle: &AppHandle, payload: &ModelStatusPayload) {
-    let _ = app_handle.emit("model-status", payload).unwrap();
-}
-
-fn update_index_status(app_handle: &AppHandle, progress: Option<f32>, text: &str) {
-    let _ = app_handle
-        .emit(
-            "index-status",
-            &IndexStatusPayload {
-                progress,
-                text: text.to_string(),
-            },
-        )
-        .unwrap();
-}
-
-fn update_index_processing_status(
-    app_handle: &AppHandle,
-    processed: usize,
-    total: usize,
-    errors: usize,
-) {
-    let mut msg = format!("Processed {processed} / {total} files...");
-    if errors > 0 {
-        msg += &format!(" ({errors} errors)");
-    }
-    update_index_status(&app_handle, Some(processed as f32 / total as f32), &msg);
-}
-
-fn clear_index_status(app_handle: &AppHandle) {
-    update_index_status(&app_handle, Some(1.0), "")
-}
-
-fn set_is_indexing(app_handle: &AppHandle, is_indexing: bool) {
-    let _ = app_handle.emit("is-indexing", is_indexing).unwrap();
-}
-
-fn clear_results(app_handle: &AppHandle) {
-    let _ = app_handle.emit("clear-results", ()).unwrap();
-}
-
-#[command]
-pub async fn get_index_status(app_handle: AppHandle) {
-    let state = app_handle.state::<AppState>();
-
-    update_index_status(
-        &app_handle,
-        None,
-        &format!("{} indexed files", state.db.count_indexed_files().unwrap()),
-    );
-}
-
-#[command]
-pub async fn get_model_status(app_handle: AppHandle) {
-    let state = app_handle.state::<AppState>();
-    let selected_model_manifest = state.selected_model;
-
-    update_model_status(&app_handle, ModelStatus::Neutral, "Loading model...", "");
-
-    let model = Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
-
-    let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        preload_libs(&state.data_path.join("lib"));
-
-        let mut model_context = model.write().unwrap();
-        model_context.load_text_encoder()?;
-        model_context.load_vision_encoder()
-    })) {
-        Ok(Ok(())) => ModelStatusPayload {
-            status: ModelStatus::Success,
-            status_text: "Model loaded successfully!".to_string(),
-            device_text: model.read().unwrap().device_string(),
-        },
-        Ok(Err(e)) => ModelStatusPayload {
-            status: ModelStatus::Error,
-            status_text: format!("Error loading model: {:?}", e),
-            device_text: "".to_string(),
-        },
-        Err(panic_info) => {
-            let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = panic_info.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "Unknown error".to_string()
-            };
-            ModelStatusPayload {
-                status: ModelStatus::Error,
-                status_text: format!("Fatal error: {}", msg),
-                device_text: "".to_string(),
-            }
-        }
-    };
-
-    update_model_status_from_payload(&app_handle, &result);
 }
 
 #[command]
@@ -489,83 +331,4 @@ fn dir_indexing(
 pub async fn stop_indexing(state: State<'_, AppState>) -> Result<(), ()> {
     state.indexing_stopped.store(true, Ordering::Relaxed);
     Ok(())
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum SearchInputType {
-    Text,
-    Image,
-}
-
-#[command]
-pub async fn search(
-    app_handle: AppHandle,
-    search_type: SearchInputType,
-    query: String,
-    max_results: u32,
-    threshold: f32,
-) -> Result<Vec<SearchResult>, String> {
-    let state = app_handle.state::<AppState>();
-    let selected_model_manifest = state.selected_model;
-    let selected_visual_model =
-        Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
-    let model_id = selected_model_manifest.name;
-    let selected_kind = EmbeddingKind::Visual; // Currently only visual supported
-    let emb_type_id = state
-        .db
-        .get_emb_type_id(selected_model_manifest, &selected_kind)
-        .map_err(|e| e.to_string())?;
-
-    let query_embedding = match search_type {
-        SearchInputType::Text => {
-            if !selected_visual_model
-                .read()
-                .unwrap()
-                .is_text_encoder_loaded()
-            {
-                return Err("Model not ready".to_string());
-            }
-
-            selected_visual_model
-                .write()
-                .unwrap()
-                .embed_text(&query)
-                .map_err(|e| e.to_string())
-        }
-        SearchInputType::Image => {
-            if !selected_visual_model
-                .read()
-                .unwrap()
-                .is_vision_encoder_loaded()
-            {
-                return Err("Model not ready".to_string());
-            }
-
-            let path = PathBuf::from(&query);
-            if !path.is_file() {
-                return Err("Please select a valid image as search query".to_string());
-            }
-
-            selected_visual_model
-                .write()
-                .unwrap()
-                .embed_images(&[path])?
-                .remove(0)
-                .1
-                .map_err(|e| format!("Can't open query image: {}", e))
-        }
-    }?
-    .to_vec();
-
-    state
-        .db
-        .search_embeddings(
-            query_embedding,
-            model_id,
-            emb_type_id,
-            max_results,
-            threshold,
-        )
-        .map_err(|e| e.to_string())
 }

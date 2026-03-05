@@ -2,7 +2,6 @@ mod common;
 pub mod errors;
 pub mod metaclip2;
 
-use crate::dylib::preload_libs;
 use crate::models::errors::ModelError;
 use ndarray::Array1;
 use std::collections::HashMap;

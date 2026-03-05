@@ -11,10 +11,15 @@ document.getElementById("titlebar-maximize")!.onclick =
   appWindow.toggleMaximize;
 document.getElementById("titlebar-close")!.onclick = appWindow.close;
 
-window.onload = () => {
-  setTimeout(appWindow.show, 100);
-  invoke("get_index_status");
-  invoke("get_model_status");
+window.onload = async () => {
+  // Show window after a delay to prevent flashing
+  await new Promise(requestAnimationFrame);
+  await new Promise((_) => setTimeout(_, 100));
+  await appWindow.show();
+
+  const count = await invoke("get_indexed_count");
+  updateIndexStatus(null, `${count} indexed files`);
+  await invoke("get_model_status");
 };
 
 document.oncontextmenu = (event) => {
@@ -225,7 +230,7 @@ function updateModelStatus(
   deviceLabel.textContent = `Device: ${deviceText ? deviceText : "unknown"}`;
 }
 
-function updateIndexStatus(progress: number, text: string): void {
+function updateIndexStatus(progress: number | null, text: string): void {
   if (progress !== null) setProgress(indexButton, progress, 0.1);
   indexStatus.textContent = text;
 }
