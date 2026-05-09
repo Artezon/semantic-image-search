@@ -6,12 +6,16 @@
     "command": "npm run tauri dev",
   },
   {
-    "label": "Build release (faster)",
+    "label": "Build release (faster build)",
     "command": "npm run tauri build",
   },
   {
     "label": "Build release (distribution)",
     "command": "npm run tauri build -- -- -- --profile release-opt",
+  },
+  {
+    "label": "Format frontend code",
+    "command": "npm run format",
   },
   {
     "label": "Build vcpkg",

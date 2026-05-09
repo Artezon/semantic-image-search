@@ -1,0 +1,271 @@
+:root {
+  --primary: #8960bf;
+  --surface: #eff1f5;
+  --surface-container: #e6e9ef;
+  --outline: #ccd0da;
+  --text: #000000;
+  --text-secondary: #4c4f69;
+  --text-disabled: #9ca0b0;
+  --text-success: forestgreen;
+  --text-failure: darkred;
+  --surface-translucent: rgba(239, 241, 245, 0.7);
+  --surface-container-translucent: rgba(230, 233, 239, 0.7);
+  --titlebar-btn-hover: rgba(0, 0, 0, 0.1);
+  --titlebar-btn-pressed: rgba(0, 0, 0, 0.2);
+  --titlebar-btn-close-hover: rgba(255, 80, 80, 0.4);
+  --titlebar-btn-close-pressed: rgba(255, 80, 80, 0.7);
+
+  accent-color: var(--primary);
+
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1e1e2e;
+    --surface-container: #181825;
+    --outline: #313244;
+    --text: #fcfcfc;
+    --text-secondary: #cdd6f4;
+    --text-disabled: #6c7086;
+    --text-success: limegreen;
+    --text-failure: lightcoral;
+    --surface-translucent: rgba(30, 30, 46, 0.5);
+    --surface-container-translucent: rgba(24, 24, 37, 0.5);
+    --titlebar-btn-hover: rgba(255, 255, 255, 0.1);
+    --titlebar-btn-pressed: rgba(255, 255, 255, 0.2);
+
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Adwaita Sans", "Inter Variable", "Helvetica Neue",
+    "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, Arial, sans-serif;
+}
+
+body {
+  background-color: var(--surface);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  user-select: none;
+}
+
+.vertical-divider {
+  width: 1px;
+  background-color: var(--outline);
+}
+
+.horizontal-divider {
+  height: 1px;
+  background-color: var(--outline);
+}
+
+h1 {
+  font-size: 23px;
+  font-weight: 500;
+  margin-top: -10px;
+  margin-bottom: 10px;
+}
+
+h2 {
+  font-size: 16px;
+  font-weight: 500;
+  margin-top: 10px;
+}
+
+.centered {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+.centered-text {
+  text-align: center;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3em;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--primary);
+  color: white;
+  flex-shrink: 0;
+  transition: opacity 0.1s;
+}
+
+.btn:hover {
+  opacity: 0.9;
+}
+
+.btn:active {
+  opacity: 0.8;
+}
+
+.btn > svg {
+  height: 1.2em;
+  margin: -0.1em 0;
+}
+
+.btn > span {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.full-width-btn {
+  width: 100%;
+}
+
+.progress-btn {
+  --progress: 100%;
+  --progress-transition: none;
+  position: relative;
+  background-color: var(--outline);
+  overflow: hidden;
+}
+
+.progress-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: var(--progress);
+  background: var(--primary);
+  transition: width var(--progress-transition);
+}
+
+.progress-btn svg,
+.progress-btn span {
+  position: relative;
+  z-index: 1;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.input-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.param-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+label {
+  font-size: 14px;
+  margin-bottom: 5px;
+}
+
+input[type="text"],
+input[type="number"] {
+  padding: 7px 9px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background-color: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+input[type="text"] {
+  flex: 1;
+}
+
+input[type="number"] {
+  width: 80px;
+  text-align: right;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--text-disabled);
+}
+
+.radio-group {
+  display: flex;
+  gap: 15px;
+  margin: 10px 0;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+input[type="radio"] {
+  cursor: pointer;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background-color: var(--outline);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--primary);
+  width: 0%;
+}
+
+.column-titlebar {
+  position: sticky;
+  top: -20px;
+  background-color: var(--surface-container-translucent);
+  backdrop-filter: blur(25px);
+  padding: 20px 20px 0 20px;
+  margin: -20px -20px 0 -20px;
+  z-index: 10;
+  border-bottom: 1px solid var(--outline);
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid var(--outline);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
