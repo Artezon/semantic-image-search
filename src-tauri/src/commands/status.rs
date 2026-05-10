@@ -21,44 +21,37 @@ pub async fn get_model_status(app_handle: AppHandle) {
 
     let model = Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
 
-    let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        update_model_status(
-            &app_handle,
-            ModelStatus::Neutral,
-            "Loading libraries...",
-            "",
-        );
-        preload_libs(&state.data_path.join("lib"));
+    update_model_status(
+        &app_handle,
+        ModelStatus::Neutral,
+        "Loading libraries...",
+        "",
+    );
 
-        update_model_status(&app_handle, ModelStatus::Neutral, "Loading model...", "");
+    if let Err(e) = preload_libs(&state.data_path.join("lib")) {
+        update_model_status(&app_handle, ModelStatus::Error, &e, "");
+        return;
+    }
+
+    update_model_status(&app_handle, ModelStatus::Neutral, "Loading model...", "");
+
+    let load_result = (|| {
         let mut model_context = model.write().unwrap();
         model_context.load_text_encoder()?;
         model_context.load_vision_encoder()
-    })) {
-        Ok(Ok(())) => ModelStatusPayload {
+    })();
+
+    let result = match load_result {
+        Ok(()) => ModelStatusPayload {
             status: ModelStatus::Success,
             status_text: "Model loaded successfully!".to_string(),
             device_text: model.read().unwrap().device_string(),
         },
-        Ok(Err(e)) => ModelStatusPayload {
+        Err(e) => ModelStatusPayload {
             status: ModelStatus::Error,
             status_text: format!("Error loading model: {:?}", e),
             device_text: "".to_string(),
         },
-        Err(panic_info) => {
-            let msg = if let Some(s) = panic_info.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = panic_info.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "Unknown error".to_string()
-            };
-            ModelStatusPayload {
-                status: ModelStatus::Error,
-                status_text: format!("Fatal error: {}", msg),
-                device_text: "".to_string(),
-            }
-        }
     };
 
     update_model_status_from_payload(&app_handle, &result);

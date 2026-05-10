@@ -11,14 +11,18 @@
   },
   {
     "label": "Build release (distribution)",
-    "command": "npm run tauri build -- -- -- --profile release-opt",
+    "command": "npm run tauri build -- -- --profile release-opt",
+  },
+  {
+    "label": "Build release (distribution with HEIF support)",
+    "command": "npm run tauri build -- -- --profile release-opt --features heif",
   },
   {
     "label": "Format frontend code",
     "command": "npm run format",
   },
   {
-    "label": "Build vcpkg",
-    "command": "cargo install cargo-vcpkg; cargo vcpkg -v build --manifest-path src-tauri/Cargo.toml",
+    "label": "Build vcpkg (for HEIF support)",
+    "command": "./build-vcpkg-heif.bat",
   },
 ]

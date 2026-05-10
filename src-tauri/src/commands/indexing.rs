@@ -20,10 +20,10 @@ use tauri::{AppHandle, Manager, State, command};
 use walkdir::WalkDir;
 
 #[cfg(not(feature = "heif"))]
-static IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff"];
+static IMAGE_EXTENSIONS: [&str; 8] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif"];
 #[cfg(feature = "heif")]
 static IMAGE_EXTENSIONS: [&str; 10] = [
-    "jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "heic", "heif", "avif",
+    "jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif", "heic", "heif",
 ];
 
 static VIDEO_EXTENSIONS: [&str; 8] = ["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "mpeg"];
