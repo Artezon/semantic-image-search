@@ -39,7 +39,7 @@ pub struct EmbMetadata {
     pub id: i64,
     pub file_id: i64,
     pub emb_type_id: u32,
-    pub last_file_mtime: f64,
+    pub last_file_mtime: i64,
     pub last_file_size: i64,
 }
 
@@ -93,6 +93,7 @@ impl Database {
 
     pub fn add_model_to_db(&self, model_manifest: &ModelManifest) -> Result<Vec<u32>> {
         let name = model_manifest.name;
+        let dim = model_manifest.dim;
         let mut ids = Vec::new();
 
         for kind in model_manifest.capabilities {
@@ -111,9 +112,6 @@ impl Database {
                 continue;
             }
 
-            // Create virtual table for this model
-            self.init_embedding_virtual_table(name, model_manifest.dim)?;
-
             // Insert new embedding type and return its id
             let id = self.with_conn(|conn| {
                 conn.execute(
@@ -122,18 +120,31 @@ impl Database {
                 )?;
                 Ok(conn.last_insert_rowid() as u32)
             })?;
+
+            // Create virtual table for this model
+            self.init_embedding_virtual_table(id, dim)?;
+
             ids.push(id);
         }
 
         Ok(ids)
     }
 
-    fn init_embedding_virtual_table(&self, model_name: &str, dim: u32) -> Result<()> {
+    fn init_embedding_virtual_table(&self, emb_type_id: u32, dim: u32) -> Result<()> {
         self.with_conn(|conn| {
             let sql = format!(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS vec_{} USING vec0(emb_id INTEGER PRIMARY KEY, vec float[{}])", model_name, dim
+                "CREATE VIRTUAL TABLE IF NOT EXISTS vec_model{emb_type_id} USING vec0(emb_id INTEGER PRIMARY KEY, vec float[{dim}])"
             );
-            let _ = conn.execute(&sql, [])?;
+            conn.execute(&sql, [])?;
+            let trigger = formatdoc!("
+                CREATE TRIGGER IF NOT EXISTS trg_emb_metadata_del_vec_model{emb_type_id}
+                AFTER DELETE ON emb_metadata
+                WHEN OLD.emb_type_id = {emb_type_id}
+                BEGIN
+                    DELETE FROM vec_model{emb_type_id} WHERE emb_id = OLD.id;
+                END
+            ");
+            conn.execute(&trigger, [])?;
             Ok(())
         })
     }
@@ -249,7 +260,6 @@ impl Database {
         &self,
         paths_and_embeddings: Vec<(PathBuf, Vec<f32>)>,
         files_type: &FileType,
-        emb_model: &str,
         emb_type_id: u32,
     ) -> Result<()> {
         self.with_conn(|conn: &mut Connection| {
@@ -261,8 +271,11 @@ impl Database {
                 let modified_at = metadata
                     .modified()?
                     .duration_since(std::time::UNIX_EPOCH)?
-                    .as_secs_f64();
+                    .as_millis() as i64;
                 let size = metadata.len() as i64;
+                let indexed_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_millis() as i64;
 
                 tx.execute(
                     indoc! {"
@@ -279,21 +292,21 @@ impl Database {
 
                 let emb_id: i64 = tx.query_row(
                     indoc! {"
-                        INSERT INTO emb_metadata (file_id, emb_type_id, last_file_mtime, last_file_size)
-                        VALUES (?1, ?2, ?3, ?4)
+                        INSERT INTO emb_metadata (file_id, emb_type_id, last_file_mtime, last_file_size, indexed_at)
+                        VALUES (?1, ?2, ?3, ?4, ?5)
                         ON CONFLICT(file_id, emb_type_id) DO UPDATE SET
                             last_file_mtime = excluded.last_file_mtime,
-                            last_file_size = excluded.last_file_size
+                            last_file_size = excluded.last_file_size,
+                            indexed_at = excluded.indexed_at
                         RETURNING id
                     "},
-                    params![file_id, emb_type_id, modified_at, size],
+                    params![file_id, emb_type_id, modified_at, size, indexed_at],
                     |row| row.get(0),
                 )?;
 
                 tx.execute(
                     &format!(
-                        "INSERT OR REPLACE INTO vec_{} (emb_id, vec) VALUES (?1, ?2)",
-                        emb_model
+                        "INSERT OR REPLACE INTO vec_model{emb_type_id} (emb_id, vec) VALUES (?1, ?2)"
                     ),
                     params![emb_id, embedding.as_bytes()],
                 )?;
@@ -307,7 +320,6 @@ impl Database {
     pub fn search_embeddings(
         &self,
         query_vec: Vec<f32>,
-        emb_model: &str,
         emb_type_id: u32,
         max_results: u32,
         threshold: f32,
@@ -320,7 +332,7 @@ impl Database {
                     file.path AS path,
                     file.type AS type,
                     1 - vec_distance_cosine(vec_table.vec, ?1) AS cosine_similarity
-                FROM vec_{} AS vec_table
+                FROM vec_model{emb_type_id} AS vec_table
                 JOIN emb_metadata
                     ON emb_metadata.id = vec_table.emb_id
                 JOIN file
@@ -330,8 +342,7 @@ impl Database {
                     AND vec_table.vec MATCH ?1
                     AND k = ?3
                 ORDER BY cosine_similarity DESC
-                ",
-                emb_model
+                "
             );
 
             let mut stmt = conn.prepare(&sql)?;
@@ -367,33 +378,6 @@ impl Database {
         self.with_conn(|conn| {
             conn.query_row("SELECT COUNT(id) FROM file", [], |row| row.get(0))
                 .map_err(Into::into)
-        })
-    }
-
-    pub fn clear_orphan_vecs(&self) -> Result<usize> {
-        let mut total: usize = 0;
-
-        self.with_conn(|conn| {
-            let mut stmt = conn.prepare("SELECT DISTINCT model_name FROM emb_type")?;
-            let model_names: Vec<String> = {
-                stmt.query_map([], |row| row.get::<_, String>(0))?
-                    .filter_map(|r| r.ok())
-                    .collect()
-            };
-            for model_name in &model_names {
-                let sql = formatdoc!(
-                    "
-                    DELETE FROM vec_{0} WHERE NOT EXISTS (
-                        SELECT 1 FROM emb_metadata
-                        WHERE emb_metadata.id = vec_{0}.emb_id
-                    )
-                    ",
-                    model_name
-                );
-                total += conn.execute(&sql, [])?;
-            }
-
-            Ok(total)
         })
     }
 }

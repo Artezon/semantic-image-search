@@ -43,8 +43,6 @@ impl AppState {
             }
         };
 
-        db.clear_orphan_vecs().unwrap();
-
         let model_manager = models::ModelManager::new(data_path.join(PATH_MODELS_DIR));
         let selected_model = &models::metaclip2::MANIFEST;
 

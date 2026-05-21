@@ -5,12 +5,11 @@ CREATE TABLE IF NOT EXISTS file (
 );
 
 CREATE TABLE IF NOT EXISTS file_metadata (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id          INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     meta_key         TEXT NOT NULL,
-    meta_value       TEXT NOT NULL
+    meta_value       TEXT NOT NULL,
+    PRIMARY KEY (file_id, meta_key)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_file_metadata_file_id_meta_key ON file_metadata(file_id, meta_key);
 
 CREATE TABLE IF NOT EXISTS emb_type (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,7 +22,9 @@ CREATE TABLE IF NOT EXISTS emb_metadata (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id          INTEGER NOT NULL REFERENCES file(id) ON DELETE CASCADE,
     emb_type_id      INTEGER NOT NULL REFERENCES emb_type(id) ON DELETE RESTRICT,
-    last_file_mtime  REAL NOT NULL,
-    last_file_size   INTEGER NOT NULL
+    last_file_mtime  INTEGER NOT NULL,
+    last_file_size   INTEGER NOT NULL,
+    indexed_at       INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_emb_metadata_file_id_emb_type_id ON emb_metadata(file_id, emb_type_id);
+CREATE INDEX IF NOT EXISTS idx_emb_metadata_emb_type_id ON emb_metadata(emb_type_id);

@@ -4,7 +4,7 @@ use crate::{
         MessageKind, clear_index_status, set_is_indexing, show_message,
         update_index_processing_status, update_index_status,
     },
-    models::{EmbeddingKind, ModelManifest, VisualSearchModel},
+    models::{ModelManifest, VisualSearchModel},
     state::AppState,
     utils::format_seconds,
 };
@@ -13,8 +13,7 @@ use std::{
     ops::Deref,
     path::PathBuf,
     sync::{Arc, RwLock, atomic::Ordering},
-    time::Duration,
-    time::Instant,
+    time::{Duration, Instant, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Manager, State, command};
 use walkdir::WalkDir;
@@ -41,7 +40,7 @@ pub async fn index_directory(app_handle: AppHandle, dir: String, batch_size: u32
         let selected_model_manifest = state.selected_model;
         let selected_visual_model =
             Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
-        let selected_kind = EmbeddingKind::Visual; // Currently only visual supported
+        // let selected_kind = EmbeddingKind::Visual; // Currently only visual supported
 
         if !selected_visual_model
             .read()
@@ -88,7 +87,6 @@ pub async fn index_directory(app_handle: AppHandle, dir: String, batch_size: u32
             state.deref(),
             &selected_model_manifest,
             selected_visual_model,
-            &selected_kind,
             &mut total,
             &mut processed,
             &mut errors,
@@ -156,19 +154,15 @@ fn dir_indexing(
     state: &AppState,
     selected_model_manifest: &ModelManifest,
     selected_visual_model: Arc<RwLock<dyn VisualSearchModel>>,
-    selected_kind: &EmbeddingKind,
     total: &mut usize,
     processed: &mut usize,
     errors: &mut Vec<String>,
 ) -> Result<(), String> {
-    let _ = state
+    let emb_type_ids = state
         .db
         .add_model_to_db(selected_model_manifest)
         .map_err(|e| e.to_string())?;
-    let emb_type_id = state
-        .db
-        .get_emb_type_id(selected_model_manifest, &selected_kind)
-        .map_err(|e| e.to_string())?;
+    let emb_type_id = emb_type_ids[0];
 
     let mut images: Vec<PathBuf> = vec![];
     let mut videos: Vec<PathBuf> = vec![];
@@ -233,10 +227,10 @@ fn dir_indexing(
             let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
             let mtime = metadata
                 .modified()
-                .unwrap()
-                .duration_since(std::time::UNIX_EPOCH)
                 .map_err(|e| e.to_string())?
-                .as_secs_f64();
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| e.to_string())?
+                .as_millis() as i64;
             let size = metadata.len();
 
             let file_in_db = state
@@ -274,8 +268,6 @@ fn dir_indexing(
 
         update_index_processing_status(&app_handle, *processed, *total, errors.len());
 
-        let model_id = selected_model_manifest.name;
-
         for chunk in needs_indexing.chunks(batch_size as usize) {
             if state.indexing_stopped.load(Ordering::Relaxed) {
                 return Ok(());
@@ -303,12 +295,7 @@ fn dir_indexing(
                     *processed += paths_and_embeddings.len();
                     state
                         .db
-                        .insert_files_and_embeddings(
-                            paths_and_embeddings,
-                            &file_type,
-                            model_id,
-                            emb_type_id,
-                        )
+                        .insert_files_and_embeddings(paths_and_embeddings, &file_type, emb_type_id)
                         .map_err(|e| e.to_string())?;
                 }
                 Err(e) => {

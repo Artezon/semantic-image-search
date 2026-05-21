@@ -21,7 +21,6 @@ pub async fn search(
     let selected_model_manifest = state.selected_model;
     let selected_visual_model =
         Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
-    let model_id = selected_model_manifest.name;
     let selected_kind = EmbeddingKind::Visual; // Currently only visual supported
     let emb_type_id = state
         .db
@@ -71,12 +70,6 @@ pub async fn search(
 
     state
         .db
-        .search_embeddings(
-            query_embedding,
-            model_id,
-            emb_type_id,
-            max_results,
-            threshold,
-        )
+        .search_embeddings(query_embedding, emb_type_id, max_results, threshold)
         .map_err(|e| e.to_string())
 }
