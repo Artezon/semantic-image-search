@@ -96,57 +96,54 @@ impl Database {
         let dim = model_manifest.dim;
         let mut ids = Vec::new();
 
-        for kind in model_manifest.capabilities {
-            // Check if embedding type already exists
-            let existing = self.with_conn(|conn| {
-                let mut stmt =
-                    conn.prepare("SELECT id FROM emb_type WHERE kind = ?1 AND model_name = ?2")?;
-                let id = stmt
-                    .query_row([kind.as_str(), name], |row| row.get::<_, u32>(0))
-                    .optional()?;
-                Ok(id)
-            })?;
+        self.with_conn(|conn: &mut Connection| {
+            let tx = conn.transaction()?;
 
-            if let Some(id) = existing {
-                ids.push(id);
-                continue;
-            }
+            for kind in model_manifest.capabilities {
+                // Check if embedding type already exists
+                let existing: Option<u32> = {
+                    let mut stmt = tx.prepare(
+                        "SELECT id FROM emb_type WHERE kind = ?1 AND model_name = ?2",
+                    )?;
+                    stmt.query_row([kind.as_str(), name], |row| row.get::<_, u32>(0))
+                        .optional()?
+                };
 
-            // Insert new embedding type and return its id
-            let id = self.with_conn(|conn| {
-                conn.execute(
+                if let Some(id) = existing {
+                    ids.push(id);
+                    continue;
+                }
+
+                // Insert new embedding type and return its id
+                tx.execute(
                     "INSERT INTO emb_type (kind, model_name) VALUES (?1, ?2)",
                     [kind.as_str(), name],
                 )?;
-                Ok(conn.last_insert_rowid() as u32)
-            })?;
+                let id = tx.last_insert_rowid() as u32;
 
-            // Create virtual table for this model
-            self.init_embedding_virtual_table(id, dim)?;
+                // Create virtual table for this model
+                let sql = format!(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS vec_model{id} USING vec0(emb_id INTEGER PRIMARY KEY, vec float[{dim}])"
+                );
+                tx.execute(&sql, [])?;
+                let trigger = formatdoc!("
+                    CREATE TRIGGER IF NOT EXISTS trg_emb_metadata_del_vec_model{id}
+                    AFTER DELETE ON emb_metadata
+                    WHEN OLD.emb_type_id = {id}
+                    BEGIN
+                        DELETE FROM vec_model{id} WHERE emb_id = OLD.id;
+                    END
+                ");
+                tx.execute(&trigger, [])?;
 
-            ids.push(id);
-        }
+                ids.push(id);
+            }
+
+            tx.commit()?;
+            Ok(())
+        })?;
 
         Ok(ids)
-    }
-
-    fn init_embedding_virtual_table(&self, emb_type_id: u32, dim: u32) -> Result<()> {
-        self.with_conn(|conn| {
-            let sql = format!(
-                "CREATE VIRTUAL TABLE IF NOT EXISTS vec_model{emb_type_id} USING vec0(emb_id INTEGER PRIMARY KEY, vec float[{dim}])"
-            );
-            conn.execute(&sql, [])?;
-            let trigger = formatdoc!("
-                CREATE TRIGGER IF NOT EXISTS trg_emb_metadata_del_vec_model{emb_type_id}
-                AFTER DELETE ON emb_metadata
-                WHEN OLD.emb_type_id = {emb_type_id}
-                BEGIN
-                    DELETE FROM vec_model{emb_type_id} WHERE emb_id = OLD.id;
-                END
-            ");
-            conn.execute(&trigger, [])?;
-            Ok(())
-        })
     }
 
     pub fn get_emb_type_id(
