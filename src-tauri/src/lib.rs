@@ -21,7 +21,12 @@ pub fn run() {
 
     Builder::default()
         .setup(|app| {
-            app.manage(state::AppState::new(app.handle()));
+            let app_state = state::AppState::new(app.handle());
+
+            #[cfg(feature = "video")]
+            models::video::set_ffmpeg_path(app_state.data_path.join("lib/ffmpeg.exe").clone());
+
+            app.manage(app_state);
 
             #[cfg(desktop)]
             app.handle().plugin(
