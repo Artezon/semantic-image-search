@@ -83,24 +83,18 @@ impl Default for Config {
 
 impl Config {
     fn load(config_json_path: &Path) -> Self {
-        match std::fs::read_to_string(config_json_path)
+        let config = match std::fs::read_to_string(config_json_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
         {
             Some(config) => config,
-            None => {
-                let default = Config::default();
-                default.save(config_json_path);
-                default
-            }
-        }
+            None => Config::default(),
+        };
+        config.save(config_json_path);
+        config
     }
 
     fn save(&self, config_json_path: &Path) {
-        std::fs::write(
-            config_json_path,
-            serde_json::to_string_pretty(self).unwrap(),
-        )
-        .unwrap();
+        std::fs::write(config_json_path, serde_json::to_string(self).unwrap()).unwrap();
     }
 }
