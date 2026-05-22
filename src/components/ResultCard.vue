@@ -6,16 +6,16 @@
       <div class="loading-text">Loading preview...</div>
     </template>
 
-    <!-- Error -->
-    <template v-else-if="error">
-      <div class="error-icon">⚠</div>
-      <div class="error-text">Error loading thumbnail<br />{{ result.filename }}</div>
-    </template>
-
-    <!-- Loaded -->
     <template v-else>
-      <img :src="thumbUrl" :alt="result.filename" />
-      <div v-if="result.fileType === 'VID'" class="video-indicator"></div>
+      <template v-if="error">
+        <div class="error-icon">⚠</div>
+        <div class="error-text">Error loading thumbnail</div>
+      </template>
+      <template v-else>
+        <img :src="thumbUrl" loading="lazy" :alt="result.filename" />
+        <div v-if="result.fileType === 'VID'" class="video-indicator"></div>
+      </template>
+
       <div class="result-card-overlay">
         <div class="result-card-title">{{ result.filename }}</div>
         <div class="result-card-score">Score: {{ result.score.toFixed(4) }}</div>
@@ -46,23 +46,32 @@ let objectUrl: string | null = null;
 async function loadThumbnail() {
   const { result } = props;
 
-  if (result.fileType === "IMG") {
-    thumbUrl.value = convertFileSrc(result.path);
-    const img = new Image();
-    img.onload = () => (loaded.value = true);
-    img.onerror = () => (error.value = true);
-    img.src = thumbUrl.value;
-  } else if (result.fileType === "VID") {
+  const isHeic = (filename: string) =>
+    [".heic", ".heif"].some((ext) => filename.toLowerCase().endsWith(ext));
+
+  const fromFrontend = result.fileType === "IMG" && !isHeic(result.filename);
+  const fromBackend = result.fileType === "VID" || isHeic(result.filename);
+
+  if (fromFrontend) {
+    try {
+      const src = convertFileSrc(result.path);
+      objectUrl = await resizedImage(src);
+      thumbUrl.value = objectUrl;
+      loaded.value = true;
+    } catch {
+      error.value = true;
+    }
+  } else if (fromBackend) {
     try {
       const thumbData = await invoke<{
-        bytes?: Uint8Array;
+        bytes?: number[];
         mime?: string;
       }>("get_thumbnail", {
         path: result.path,
         fileType: result.fileType,
       });
       if (thumbData?.bytes) {
-        const blob = new Blob([thumbData.bytes], {
+        const blob = new Blob([new Uint8Array(thumbData.bytes)], {
           type: thumbData.mime,
         });
         objectUrl = URL.createObjectURL(blob);
@@ -74,12 +83,49 @@ async function loadThumbnail() {
       } else {
         error.value = true;
       }
-    } catch {
+    } catch (e) {
       error.value = true;
     }
   } else {
     error.value = true;
   }
+}
+
+async function resizedImage(src: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const MAX = 512;
+      let { width, height } = img;
+
+      if (width > MAX || height > MAX) {
+        if (width > height) {
+          height = Math.round((height / width) * MAX);
+          width = MAX;
+        } else {
+          width = Math.round((width / height) * MAX);
+          height = MAX;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return reject(new Error("toBlob failed"));
+          const url = URL.createObjectURL(blob);
+          resolve(url);
+        },
+        "image/jpeg",
+        0.85,
+      );
+    };
+    img.onerror = reject;
+    img.src = src;
+  });
 }
 
 onMounted(() => {
@@ -175,7 +221,7 @@ onUnmounted(() => {
 .error-text {
   font-size: 11px;
   text-align: center;
-  margin-top: 10px;
+  margin-bottom: 45px;
   width: 100%;
   padding: 0 10px;
   overflow-wrap: break-word;

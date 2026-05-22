@@ -3,3 +3,7 @@ rustflags = ["-C", "target-feature=+crt-static"]
 
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+[env]
+VCPKG_ROOT = "C:\\vcpkg"
+PKG_CONFIG_PATH = "C:\\vcpkg\\installed\\x64-windows\\lib\\pkgconfig"

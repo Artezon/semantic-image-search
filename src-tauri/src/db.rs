@@ -18,14 +18,16 @@ static MIGRATIONS_DIR: Dir = include_dir!("$CARGO_MANIFEST_DIR/migrations");
 #[derive(PartialEq)]
 pub enum FileType {
     IMG,
-    // VID,
+    #[cfg(feature = "video")]
+    VID,
 }
 
 impl FileType {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::IMG => "IMG",
-            // Self::VID => "VID",
+            #[cfg(feature = "video")]
+            Self::VID => "VID",
         }
     }
 }

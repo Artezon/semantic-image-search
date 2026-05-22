@@ -1,7 +1,10 @@
-use crate::models::common::{build_session, clip_prepare_image, l2_normalize};
+#[cfg(feature = "video")]
+use crate::models::common::clip_prepare_rgb;
+use crate::models::common::{build_session, clip_prepare_image};
 use crate::models::{
     EmbeddingKind, Model, ModelError, ModelManifest, TextEncoder, VisualEncoder, VisualSearchModel,
 };
+use crate::utils::l2_normalize;
 use anyhow::Result;
 use ndarray::{Array1, Array2, Array4, ArrayView2, Axis};
 use ort::{inputs, session::Session, value::TensorRef};
@@ -231,5 +234,48 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
         }
 
         Ok(result)
+    }
+
+    #[cfg(feature = "video")]
+    fn embed_video(&mut self, path: &Path, num_frames: u32) -> Result<Array1<f32>, ModelError> {
+        if self.vision_session.is_none() {
+            return Err(ModelError::NotLoaded);
+        }
+
+        let frames = crate::models::video::extract_video_frames(path, num_frames)
+            .map_err(|e| ModelError::InferenceFailed(e))?;
+
+        let w = self.input_img_w_and_h as usize;
+        let h = self.input_img_w_and_h as usize;
+
+        let frame_tensors: Vec<Vec<f32>> = frames
+            .iter()
+            .map(|frame| clip_prepare_rgb(frame, w, h, MEAN, STD))
+            .collect();
+
+        if frame_tensors.is_empty() {
+            return Err(ModelError::InferenceFailed(
+                "No frames extracted from video".to_string(),
+            ));
+        }
+
+        let batch_size = frame_tensors.len();
+        let flat: Vec<f32> = frame_tensors.into_iter().flatten().collect();
+        let pixel_tensor = Array4::from_shape_vec((batch_size, 3, h, w), flat)
+            .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
+
+        let outputs = self.vision_session.as_mut().unwrap().run(inputs![
+            "pixel_values" => TensorRef::from_array_view(pixel_tensor.view())?,
+        ])?;
+
+        let embed_output = &outputs["image_embeds"];
+        let (shape, raw_data) = embed_output.try_extract_tensor::<f32>()?;
+        let embed_2d = ArrayView2::from_shape((shape[0] as usize, shape[1] as usize), raw_data)?;
+
+        let averaged = embed_2d
+            .mean_axis(Axis(0))
+            .unwrap_or_else(|| Array1::zeros(shape[1] as usize));
+
+        Ok(l2_normalize(averaged))
     }
 }

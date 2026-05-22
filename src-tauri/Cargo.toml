@@ -32,26 +32,20 @@ tokenizers = "0.23"
 walkdir = "2"
 zerocopy = "0.8"
 indoc = "2"
-libheif-rs = { version = "2.7", features = ["image", "embedded-libheif"], optional = true }
 libloading = "0.9"
+libheif-rs = { version = "2.7", features = ["image", "embedded-libheif"], optional = true }
+ffmpeg-next = { version = "8.1", default-features = false, features = ["codec", "format", "software-scaling"], optional = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-window-state = "2"
 
 [features]
-default = ["portable", "dynamic-ort", "cuda"]
+default = ["portable", "dynamic-ort", "cuda", "video", "heif"]
 portable = []
 dynamic-ort = ["ort/load-dynamic"]
 cuda = ["ort/cuda"]
+video = ["ffmpeg-next"]
 heif = ["libheif-rs"]
-
-[package.metadata.vcpkg]
-git = "https://github.com/microsoft/vcpkg"
-tag = "2026.04.27"
-install = ["libheif"]
-
-[package.metadata.vcpkg.target]
-x86_64-pc-windows-msvc = { triplet = "x64-windows-static", dependencies = ["libheif"] }
 
 [profile.release-opt]
 inherits = "release"

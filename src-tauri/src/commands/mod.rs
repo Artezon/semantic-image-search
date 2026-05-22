@@ -1,6 +1,7 @@
 pub mod indexing;
 pub mod search;
 pub mod status;
+pub mod thumbnail;
 
 #[macro_export]
 macro_rules! get_handlers {
@@ -11,6 +12,7 @@ macro_rules! get_handlers {
             commands::indexing::index_directory,
             commands::indexing::stop_indexing,
             commands::search::search,
+            commands::thumbnail::get_thumbnail,
         ]
     };
 }

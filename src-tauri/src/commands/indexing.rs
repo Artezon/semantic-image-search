@@ -25,6 +25,7 @@ static IMAGE_EXTENSIONS: [&str; 10] = [
     "jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif", "heic", "heif",
 ];
 
+#[cfg(feature = "video")]
 static VIDEO_EXTENSIONS: [&str; 8] = ["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "mpeg"];
 
 struct FileList {
@@ -165,6 +166,7 @@ fn dir_indexing(
     let emb_type_id = emb_type_ids[0];
 
     let mut images: Vec<PathBuf> = vec![];
+    #[cfg(feature = "video")]
     let mut videos: Vec<PathBuf> = vec![];
 
     for entry in WalkDir::new(dir_path).into_iter().filter_map(|e| e.ok()) {
@@ -179,12 +181,20 @@ fn dir_indexing(
 
         match ext.as_deref() {
             Some(e) if IMAGE_EXTENSIONS.contains(&e) => images.push(path.to_path_buf()),
+            #[cfg(feature = "video")]
             Some(e) if VIDEO_EXTENSIONS.contains(&e) => videos.push(path.to_path_buf()),
             _ => {}
         }
     }
 
-    *total = images.len() + videos.len();
+    #[cfg(feature = "video")]
+    {
+        *total = images.len() + videos.len();
+    }
+    #[cfg(not(feature = "video"))]
+    {
+        *total = images.len();
+    }
 
     if *total == 0 {
         update_index_status(
@@ -204,11 +214,12 @@ fn dir_indexing(
             batch_size,
             file_type: FileType::IMG,
         },
-        // FileList {
-        //     paths: videos,
-        //     batch_size: 1,
-        //     file_type: FileType::VID, // TODO: video embedding
-        // },
+        #[cfg(feature = "video")]
+        FileList {
+            paths: videos,
+            batch_size: 1,
+            file_type: FileType::VID,
+        },
     ];
 
     for FileList {
@@ -275,7 +286,19 @@ fn dir_indexing(
 
             let result = match file_type {
                 FileType::IMG => selected_visual_model.write().unwrap().embed_images(chunk),
-                // FileType::VID => selected_model.write().unwrap().embed_video(chunk[0]),
+                #[cfg(feature = "video")]
+                FileType::VID => {
+                    let path = chunk[0].clone();
+                    let num_frames = state.config.read().unwrap().video_frames;
+                    let emb = selected_visual_model
+                        .write()
+                        .unwrap()
+                        .embed_video(&path, num_frames);
+                    match emb {
+                        Ok(emb) => Ok(vec![(path, Ok(emb))]),
+                        Err(e) => Ok(vec![(path, Err(e.to_string()))]),
+                    }
+                }
             };
 
             match result {

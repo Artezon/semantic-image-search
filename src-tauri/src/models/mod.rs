@@ -1,6 +1,8 @@
 mod common;
 pub mod errors;
 pub mod metaclip2;
+#[cfg(feature = "video")]
+pub mod video;
 
 use crate::models::errors::ModelError;
 use ndarray::Array1;
@@ -90,7 +92,13 @@ pub trait VisualEncoder: Model {
         &mut self,
         paths: &[PathBuf],
     ) -> Result<Vec<(PathBuf, Result<Array1<f32>, String>)>, ModelError>;
-    // fn embed_video(&mut self, path: &Path) -> Result<Vec<f32>, ModelError>; // TODO
+
+    #[cfg(feature = "video")]
+    fn embed_video(
+        &mut self,
+        path: &Path,
+        num_frames: u32,
+    ) -> Result<Array1<f32>, ModelError>;
 }
 
 pub trait VisualSearchModel: TextEncoder + VisualEncoder {}

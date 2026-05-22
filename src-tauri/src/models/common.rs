@@ -1,7 +1,7 @@
+use crate::utils::open_image_as_rgb;
 use anyhow::Result;
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::Image};
-use image::{DynamicImage, ImageDecoder, ImageReader, RgbImage};
-use ndarray::Array1;
+use image::RgbImage;
 use ort::{ep, ep::ExecutionProvider, session::Session};
 use std::path::Path;
 
@@ -23,33 +23,14 @@ pub fn build_session(model_path: &str, cpu_only: bool) -> Result<(Session, &'sta
     Ok((session, device))
 }
 
-#[inline]
-pub fn l2_normalize(vec: Array1<f32>) -> Array1<f32> {
-    let norm = vec.dot(&vec).sqrt().max(f32::EPSILON);
-    vec / norm
-}
-
-#[inline]
-fn open_image_as_rgb(path: &Path) -> Result<RgbImage> {
-    let mut decoder = ImageReader::open(path)?
-        .with_guessed_format()?
-        .into_decoder()?;
-    let orientation = decoder.orientation()?;
-    let mut img = DynamicImage::from_decoder(decoder)?;
-    img.apply_orientation(orientation);
-    Ok(img.to_rgb8())
-}
-
-pub fn clip_prepare_image(
-    path: &Path,
+pub fn clip_prepare_rgb(
+    img: &RgbImage,
     w: usize,
     h: usize,
     mean: [f32; 3],
     std: [f32; 3],
-) -> Result<Vec<f32>, String> {
+) -> Vec<f32> {
     let hw = w * h;
-
-    let img = open_image_as_rgb(path).map_err(|e| e.to_string())?;
 
     let (w0, h0) = img.dimensions();
     let (w0, h0) = (w0 as usize, h0 as usize);
@@ -64,11 +45,11 @@ pub fn clip_prepare_image(
     let mut resized_img = Image::new(w1 as u32, h1 as u32, PixelType::U8x3);
     resizer
         .resize(
-            &img,
+            img,
             &mut resized_img,
             &ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::CatmullRom)),
         )
-        .map_err(|e| e.to_string())?;
+        .unwrap();
 
     let crop_x = (w1 - w) / 2;
     let crop_y = (h1 - h) / 2;
@@ -83,5 +64,16 @@ pub fn clip_prepare_image(
             pixel_buf[2 * hw + y * w + x] = (raw[src_idx + 2] as f32 / 255.0 - mean[2]) / std[2];
         }
     }
-    Ok(pixel_buf)
+    pixel_buf
+}
+
+pub fn clip_prepare_image(
+    path: &Path,
+    w: usize,
+    h: usize,
+    mean: [f32; 3],
+    std: [f32; 3],
+) -> Result<Vec<f32>, String> {
+    let img = open_image_as_rgb(path).map_err(|e| e.to_string())?;
+    Ok(clip_prepare_rgb(&img, w, h, mean, std))
 }

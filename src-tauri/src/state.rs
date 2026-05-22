@@ -64,11 +64,20 @@ impl AppState {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-pub struct Config {}
+pub struct Config {
+    #[serde(default = "default_video_frames")]
+    pub video_frames: u32,
+}
+
+fn default_video_frames() -> u32 {
+    5
+}
 
 impl Default for Config {
     fn default() -> Self {
-        Self {}
+        Self {
+            video_frames: default_video_frames(),
+        }
     }
 }
 
