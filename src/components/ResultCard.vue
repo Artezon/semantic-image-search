@@ -46,86 +46,30 @@ let objectUrl: string | null = null;
 async function loadThumbnail() {
   const { result } = props;
 
-  const isHeic = (filename: string) =>
-    [".heic", ".heif"].some((ext) => filename.toLowerCase().endsWith(ext));
-
-  const fromFrontend = result.fileType === "IMG" && !isHeic(result.filename);
-  const fromBackend = result.fileType === "VID" || isHeic(result.filename);
-
-  if (fromFrontend) {
-    try {
-      const src = convertFileSrc(result.path);
-      objectUrl = await resizedImage(src);
-      thumbUrl.value = objectUrl;
-      loaded.value = true;
-    } catch {
-      error.value = true;
-    }
-  } else if (fromBackend) {
-    try {
-      const thumbData = await invoke<{
-        bytes?: number[];
-        mime?: string;
-      }>("get_thumbnail", {
-        path: result.path,
-        fileType: result.fileType,
+  try {
+    const thumbData = await invoke<{
+      bytes?: number[];
+      mime?: string;
+    }>("get_thumbnail", {
+      path: result.path,
+      fileType: result.fileType,
+    });
+    if (thumbData?.bytes) {
+      const blob = new Blob([new Uint8Array(thumbData.bytes)], {
+        type: thumbData.mime,
       });
-      if (thumbData?.bytes) {
-        const blob = new Blob([new Uint8Array(thumbData.bytes)], {
-          type: thumbData.mime,
-        });
-        objectUrl = URL.createObjectURL(blob);
-        thumbUrl.value = objectUrl;
-        const img = new Image();
-        img.onload = () => (loaded.value = true);
-        img.onerror = () => (error.value = true);
-        img.src = thumbUrl.value;
-      } else {
-        error.value = true;
-      }
-    } catch (e) {
+      objectUrl = URL.createObjectURL(blob);
+      thumbUrl.value = objectUrl;
+      const img = new Image();
+      img.onload = () => (loaded.value = true);
+      img.onerror = () => (error.value = true);
+      img.src = thumbUrl.value;
+    } else {
       error.value = true;
     }
-  } else {
+  } catch (e) {
     error.value = true;
   }
-}
-
-async function resizedImage(src: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const MAX = 512;
-      let { width, height } = img;
-
-      if (width > MAX || height > MAX) {
-        if (width > height) {
-          height = Math.round((height / width) * MAX);
-          width = MAX;
-        } else {
-          width = Math.round((width / height) * MAX);
-          height = MAX;
-        }
-      }
-
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) return reject(new Error("toBlob failed"));
-          const url = URL.createObjectURL(blob);
-          resolve(url);
-        },
-        "image/jpeg",
-        0.85,
-      );
-    };
-    img.onerror = reject;
-    img.src = src;
-  });
 }
 
 onMounted(() => {
