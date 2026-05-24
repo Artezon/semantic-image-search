@@ -1,28 +1,29 @@
 <template>
   <div class="result-card" ref="cardRef" @click="openPath(result.path)">
-    <!-- Loading -->
-    <template v-if="!loaded && !error">
-      <div class="spinner"></div>
-      <div class="loading-text">{{ $t("card.loading_preview") }}</div>
-    </template>
+    <Transition name="fade">
+      <div class="state-loading" v-if="!loaded && !error" key="loading">
+        <div class="spinner"></div>
+        <div class="loading-text">{{ $t("card.loading_preview") }}</div>
+      </div>
 
-    <template v-else>
-      <template v-if="error">
-        <div class="error-icon">⚠</div>
-        <div class="error-text">{{ $t("card.error_loading") }}</div>
-      </template>
-      <template v-else>
-        <img :src="thumbUrl" loading="lazy" :alt="result.filename" />
-        <div v-if="result.fileType === 'VID'" class="video-indicator"></div>
-      </template>
+      <div class="state-loaded" v-else key="loaded">
+        <template v-if="error">
+          <div class="error-icon">⚠</div>
+          <div class="error-text">{{ $t("card.error_loading") }}</div>
+        </template>
+        <template v-else>
+          <img :src="thumbUrl" loading="lazy" :alt="result.filename" />
+          <div v-if="result.fileType === 'VID'" class="video-indicator"></div>
+        </template>
 
-      <div class="result-card-overlay">
-        <div class="result-card-title">{{ result.filename }}</div>
-        <div class="result-card-score">
-          {{ $t("card.score", { score: result.score.toFixed(4) }) }}
+        <div class="result-card-overlay">
+          <div class="result-card-title">{{ result.filename }}</div>
+          <div class="result-card-score">
+            {{ $t("card.score", { score: result.score.toFixed(4) }) }}
+          </div>
         </div>
       </div>
-    </template>
+    </Transition>
   </div>
 </template>
 
@@ -109,10 +110,6 @@ onUnmounted(() => {
   cursor: pointer;
   transition: transform 0.2s;
   justify-self: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   background-color: var(--surface-container);
   width: 100%;
   height: 100%;
@@ -121,6 +118,26 @@ onUnmounted(() => {
 
 .result-card:hover {
   transform: scale(1.02);
+}
+
+.state-loading,
+.state-loaded {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 .result-card img {
