@@ -16,7 +16,6 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { message } from "@tauri-apps/plugin-dialog";
-import i18n from "./i18n";
 import TitleBar from "./components/TitleBar.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import ResultsPanel from "./components/ResultsPanel.vue";
@@ -35,7 +34,7 @@ import {
 } from "./store";
 import type { IndexStatus, ModelStatus } from "./types";
 
-const { t } = useI18n();
+const { t, locale, availableLocales } = useI18n({ useScope: "global" });
 const appWindow = getCurrentWindow();
 
 onMounted(async () => {
@@ -61,8 +60,8 @@ onMounted(async () => {
   await setupListeners();
 
   const lang = await invoke<string>("get_current_lang");
-  if ((i18n.global.availableLocales as string[]).includes(lang)) {
-    (i18n.global.locale as string) = lang;
+  if (availableLocales.includes(lang)) {
+    locale.value = lang;
   }
 
   indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
@@ -109,10 +108,8 @@ async function setupListeners() {
   });
 
   await listen<string>("lang-changed", (event) => {
-    const locale = event.payload;
-    (i18n.global.locale as string) = (i18n.global.availableLocales as string[]).includes(locale)
-      ? locale
-      : "en";
+    const newLocale = event.payload;
+    locale.value = availableLocales.includes(newLocale) ? newLocale : "en";
   });
 }
 
