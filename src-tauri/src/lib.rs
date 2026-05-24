@@ -4,6 +4,7 @@
 mod commands;
 mod db;
 mod dylib;
+mod errors;
 mod frontend;
 mod models;
 mod state;
@@ -24,7 +25,7 @@ pub fn run() {
             let app_state = state::AppState::new(app.handle());
 
             #[cfg(feature = "video")]
-            models::video::set_ffmpeg_path(app_state.data_path.join("lib/ffmpeg.exe").clone());
+            models::video::set_ffmpeg_path(app_state.data_path.join("lib/ffmpeg.exe"));
 
             app.manage(app_state);
 

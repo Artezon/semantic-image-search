@@ -1,13 +1,15 @@
 {
   "name": "semantic-search",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "format": "prettier --write src/",
+    "format:frontend": "prettier --write src/",
+    "format:backend": "cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format": "npm run format:frontend && npm run format:backend",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -16,7 +18,8 @@
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-window-state": "^2.4.1",
-    "vue": "^3.5.13"
+    "vue": "^3.5.13",
+    "vue-i18n": "^11.4.4"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

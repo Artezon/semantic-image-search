@@ -1,23 +1,28 @@
 <template>
   <div class="app-sidebar">
     <div class="column-titlebar">
-      <h1 class="centered-text">Media Search</h1>
-      <div class="splash">v0.1-alpha</div>
+      <h1 class="centered-text">{{ $t("app.title") }}</h1>
+      <div class="splash">{{ $t("app.version") }}</div>
     </div>
 
     <div class="status-text model-status">
       {{ modelStatusText }}
     </div>
-    <div class="status-text">Device: {{ deviceText }}</div>
+    <div class="status-text">{{ $t("sidebar.device", { device: deviceText }) }}</div>
 
     <div class="horizontal-divider"></div>
 
     <!-- Indexing Section -->
-    <h2>Select folder to index</h2>
+    <h2>{{ $t("sidebar.select_folder") }}</h2>
     <div class="input-group">
-      <label>Search directory</label>
+      <label>{{ $t("sidebar.search_directory") }}</label>
       <div class="input-row">
-        <input type="text" v-model="indexDir" placeholder="Select search directory" readonly />
+        <input
+          type="text"
+          v-model="indexDir"
+          :placeholder="$t('sidebar.directory_placeholder')"
+          readonly
+        />
         <button class="btn icon-btn" @click="browseDirectory">
           <FolderIcon />
         </button>
@@ -25,7 +30,7 @@
     </div>
 
     <div class="param-row">
-      <label>Batch size:</label>
+      <label>{{ $t("sidebar.batch_size") }}</label>
       <input
         type="number"
         v-model.lazy.number="batchSize.value"
@@ -39,27 +44,32 @@
       :style="progressStyle"
       @click="handleIndexingButton"
     >
-      <GenerateIcon v-if="!isIndexing" />
+      <GenerateIcon v-if="indexingStatus === 'idle'" />
       <StopIcon v-else />
-      <span v-if="isStopping">Stopping...</span>
-      <span v-else-if="isIndexing">Stop indexing</span>
-      <span v-else>Index files</span>
+      <span v-if="indexingStatus === 'stopping'">{{ $t("sidebar.stopping") }}</span>
+      <span v-else-if="indexingStatus === 'indexing'">{{ $t("sidebar.stop_indexing") }}</span>
+      <span v-else>{{ $t("sidebar.index_files") }}</span>
     </button>
 
-    <div class="status-text">{{ indexStatusText }}</div>
+    <div class="status-text">
+      <template v-if="indexTextKey !== undefined">{{ indexStatusText }}</template>
+      <template v-else-if="indexedFilesCount !== null">{{
+        $t("sidebar.indexed_count", { count: indexedFilesCount })
+      }}</template>
+    </div>
 
     <div class="horizontal-divider"></div>
 
     <!-- Search Section -->
-    <h2>Search</h2>
+    <h2>{{ $t("sidebar.search") }}</h2>
     <div class="radio-group">
       <label class="radio-label">
         <input type="radio" name="search-type" value="text" v-model="searchType" />
-        Text search
+        {{ $t("sidebar.text_search") }}
       </label>
       <label class="radio-label">
         <input type="radio" name="search-type" value="image" v-model="searchType" />
-        Image search
+        {{ $t("sidebar.image_search") }}
       </label>
     </div>
 
@@ -67,7 +77,7 @@
       <input
         type="text"
         v-model="queryText"
-        placeholder="Enter search query"
+        :placeholder="$t('sidebar.search_placeholder')"
         @keyup.enter="search"
       />
     </div>
@@ -76,7 +86,7 @@
         <input
           type="text"
           v-model="queryImage"
-          placeholder="Click the button to select image"
+          :placeholder="$t('sidebar.image_placeholder')"
           readonly
         />
         <button class="btn icon-btn" @click="browseImage">
@@ -86,7 +96,7 @@
     </div>
 
     <div class="param-row">
-      <label>Max results:</label>
+      <label>{{ $t("sidebar.max_results") }}</label>
       <input
         type="number"
         v-model.lazy.number="maxResults.value"
@@ -96,7 +106,7 @@
     </div>
 
     <div class="param-row">
-      <label>Score threshold:</label>
+      <label>{{ $t("sidebar.score_threshold") }}</label>
       <input
         type="number"
         v-model.lazy.number="threshold.value"
@@ -108,28 +118,36 @@
 
     <button class="btn full-width-btn" @click="search">
       <SearchIcon />
-      <span>Search</span>
+      <span>{{ $t("sidebar.search") }}</span>
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open, message } from "@tauri-apps/plugin-dialog";
 import {
-  modelStatusText,
+  modelStatusKey,
   modelStatusColor,
   deviceText,
-  indexStatusText,
+  modelStatusParams,
   indexProgress,
-  isIndexing,
+  indexProcessed,
+  indexTotal,
+  indexErrors,
+  indexTextKey,
+  indexedFilesCount,
+  indexingStatus,
   searchResults,
   isSearching,
 } from "../store";
-import type { SearchResult } from "../types";
+import type { IndexingResult, SearchResult } from "../types";
 import { FolderIcon, GenerateIcon, ImageIcon, SearchIcon, StopIcon } from "./icons";
 import { numericSetting } from "../utils";
+
+const { t } = useI18n();
 
 const indexDir = ref("");
 const batchSize = numericSetting(1, 64, 8);
@@ -138,7 +156,29 @@ const queryImage = ref("");
 const searchType = ref<"text" | "image">("text");
 const maxResults = numericSetting(1, 4096, 100);
 const threshold = numericSetting(0, 1, 0.05, 0.01);
-const isStopping = ref(false);
+
+const modelStatusText = computed(() => {
+  const key = modelStatusKey.value as string;
+  const params = modelStatusParams.value;
+  if (key === "error") return t("model_status.error", { error: params.error || "" });
+  return t(`model_status.${key}`, params);
+});
+
+const indexStatusText = computed(() => {
+  const key = indexTextKey.value;
+  if (key === "idle") return "";
+  if (key === "indexing") {
+    const processed = indexProcessed.value;
+    const total = indexTotal.value;
+    const errors = indexErrors.value;
+    if (errors > 0) return t("index_status.indexing_with_errors", { processed, total, errors });
+    return t("index_status.indexing", { processed, total });
+  }
+  return t(`index_status.${key}`, {
+    processed: indexProcessed.value,
+    total: indexTotal.value,
+  });
+});
 
 const progressStyle = ref({
   "--progress": "100%",
@@ -146,10 +186,20 @@ const progressStyle = ref({
 });
 
 watch(indexProgress, (next, prev) => {
+  if (indexingStatus.value !== "indexing") return;
   progressStyle.value = {
-    "--progress": `${next}%`,
+    "--progress": `${next * 100}%`,
     "--progress-transition": next > prev ? "0.1s linear" : "none",
   };
+});
+
+watch(indexingStatus, (val, oldVal) => {
+  if (val === "idle" && oldVal !== "idle") {
+    progressStyle.value = {
+      "--progress": "100%",
+      "--progress-transition": "none",
+    };
+  }
 });
 
 async function browseDirectory() {
@@ -171,43 +221,71 @@ async function browseImage() {
 }
 
 async function handleIndexingButton() {
-  if (isIndexing.value) {
-    isStopping.value = true;
+  if (indexingStatus.value === "indexing") {
+    indexingStatus.value = "stopping";
     await invoke("stop_indexing");
-    isStopping.value = false;
-  } else {
-    indexStatusText.value = "Preparing...";
+  } else if (indexingStatus.value === "idle") {
+    indexProcessed.value = 0;
+    indexTotal.value = 0;
+    indexErrors.value = 0;
+    indexTextKey.value = "preparing";
     indexProgress.value = 0;
-    await invoke("index_directory", {
+    indexingStatus.value = "indexing";
+    const result = await invoke<IndexingResult | null>("index_directory", {
       dir: indexDir.value,
       batchSize: batchSize.value,
     });
+    indexingStatus.value = "idle";
+
+    if (result) {
+      const { processed, total, elapsed_secs, stopped, errors: errorsArr } = result;
+      const suffix = stopped ? "stopped" : "complete";
+
+      let summary = t("message.index_result.msg", { processed, total, elapsed: elapsed_secs });
+
+      if (errorsArr.length > 0) {
+        const maxShow = 5;
+        const shown = errorsArr.slice(0, maxShow);
+        const lines = shown.map(
+          ([path, err]) =>
+            `${t("message.index_result.errors.skipped")} ${path}\n${err.msg ?? err.code}`,
+        );
+        summary += `\n\n${t("message.index_result.errors.header", { count: errorsArr.length })}:\n\n${lines.join("\n")}`;
+        if (errorsArr.length > maxShow) {
+          const extra = errorsArr.length - maxShow;
+          summary += `\n${t("message.index_result.errors.more", { count: extra })}`;
+        }
+      }
+
+      await message(summary, {
+        title: t(`message.index_result.${suffix}.title`),
+        kind: "info",
+      });
+    }
   }
 }
 
 async function search() {
+  searchResults.value = null;
+
   const query = (searchType.value === "text" ? queryText.value : queryImage.value).trim();
 
   if (!query) {
-    searchResults.value = null;
-    await message("Please enter query to search.", {
-      title: "Empty query",
+    await message(t("message.empty_query.msg"), {
+      title: t("message.empty_query.title"),
     });
     return;
   }
 
   if (maxResults.value < 1 || maxResults.value > 4096) {
-    searchResults.value = null;
-    await message("Only values between 1 and 4096 are supported.", {
-      title: "Invalid threshold value",
+    await message(t("message.invalid_threshold.msg"), {
+      title: t("message.invalid_threshold.title"),
     });
     return;
   }
 
-  isSearching.value = true;
-  searchResults.value = null;
-
   try {
+    isSearching.value = true;
     const results = await invoke<Array<SearchResult>>("search", {
       searchType: searchType.value,
       query,
@@ -215,11 +293,22 @@ async function search() {
       threshold: threshold.value,
     });
     searchResults.value = results;
-  } catch (e) {
-    searchResults.value = null;
-    await message(e as string, { title: "Search error", kind: "error" });
-  } finally {
     isSearching.value = false;
+  } catch (e) {
+    isSearching.value = false;
+    const err = e as { code: string; msg?: string };
+    if (err.code === "no_index") {
+      await message(t("message.no_index.msg"), {
+        title: t("message.no_index.title"),
+        kind: "error",
+      });
+    } else {
+      const errorMsg = t(`error.${err.code}`, { message: err.msg });
+      await message(errorMsg, {
+        title: t("message.search_error.title"),
+        kind: "error",
+      });
+    }
   }
 }
 </script>

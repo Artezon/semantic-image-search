@@ -1,3 +1,4 @@
+use crate::errors::AppError;
 use crate::utils::open_image_as_rgb;
 use image::DynamicImage;
 use image::codecs::jpeg::JpegEncoder;
@@ -30,44 +31,45 @@ impl ThumbnailResult {
 }
 
 #[command]
-pub async fn get_thumbnail(path: String, file_type: String) -> Result<ThumbnailResult, String> {
+pub async fn get_thumbnail(path: String, file_type: String) -> Result<ThumbnailResult, AppError> {
     let path = PathBuf::from(&path);
 
     async_runtime::spawn_blocking(move || match file_type.as_str() {
-        "VID" => generate_video_thumbnail(&path),
         "IMG" => generate_image_thumbnail(&path),
+        "VID" => generate_video_thumbnail(&path),
         _ => Ok(ThumbnailResult::empty()),
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| AppError::unknown(e))?
 }
 
 #[cfg(feature = "video")]
-fn generate_video_thumbnail(path: &PathBuf) -> Result<ThumbnailResult, String> {
-    let frame = crate::models::video::extract_video_frames(path, 1)
-        .map_err(|e| e.to_string())?
+fn generate_video_thumbnail(path: &PathBuf) -> Result<ThumbnailResult, AppError> {
+    let frame = crate::models::video::extract_video_frames(path, 1)?
         .into_iter()
         .next()
-        .ok_or_else(|| "No frame extracted".to_string())?;
+        .unwrap();
 
     encode_jpeg(DynamicImage::ImageRgb8(frame))
 }
 
 #[cfg(not(feature = "video"))]
-fn generate_video_thumbnail(_path: &PathBuf) -> Result<ThumbnailResult, String> {
-    Err("Video support is disabled".to_string())
+fn generate_video_thumbnail(_path: &PathBuf) -> Result<ThumbnailResult, AppError> {
+    Err(AppError::VideoReadFailed {
+        msg: "video_support_disabled".to_string(),
+    })
 }
 
-fn generate_image_thumbnail(path: &PathBuf) -> Result<ThumbnailResult, String> {
-    let img = open_image_as_rgb(path).map_err(|e| e.to_string())?;
+fn generate_image_thumbnail(path: &PathBuf) -> Result<ThumbnailResult, AppError> {
+    let img = open_image_as_rgb(path).map_err(|e| AppError::unknown(e))?;
     encode_jpeg(DynamicImage::ImageRgb8(img))
 }
 
-fn encode_jpeg(img: DynamicImage) -> Result<ThumbnailResult, String> {
+fn encode_jpeg(img: DynamicImage) -> Result<ThumbnailResult, AppError> {
     let img = img.thumbnail(THUMBNAIL_MAX_PX, THUMBNAIL_MAX_PX);
     let mut buf = Vec::new();
     JpegEncoder::new_with_quality(&mut buf, THUMBNAIL_JPEG_QUALITY)
         .encode_image(&img)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::unknown(e))?;
     Ok(ThumbnailResult::jpeg(buf))
 }

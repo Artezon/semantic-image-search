@@ -3,13 +3,13 @@
     <!-- Loading -->
     <template v-if="!loaded && !error">
       <div class="spinner"></div>
-      <div class="loading-text">Loading preview...</div>
+      <div class="loading-text">{{ $t("card.loading_preview") }}</div>
     </template>
 
     <template v-else>
       <template v-if="error">
         <div class="error-icon">⚠</div>
-        <div class="error-text">Error loading thumbnail</div>
+        <div class="error-text">{{ $t("card.error_loading") }}</div>
       </template>
       <template v-else>
         <img :src="thumbUrl" loading="lazy" :alt="result.filename" />
@@ -18,7 +18,9 @@
 
       <div class="result-card-overlay">
         <div class="result-card-title">{{ result.filename }}</div>
-        <div class="result-card-score">Score: {{ result.score.toFixed(4) }}</div>
+        <div class="result-card-score">
+          {{ $t("card.score", { score: result.score.toFixed(4) }) }}
+        </div>
       </div>
     </template>
   </div>
@@ -26,7 +28,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { SearchResult } from "../types";
 

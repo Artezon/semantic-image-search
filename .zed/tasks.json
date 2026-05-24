@@ -14,15 +14,11 @@
     "command": "npm run tauri build -- -- --profile release-opt",
   },
   {
-    "label": "Build release (distribution with HEIF support)",
-    "command": "npm run tauri build -- -- --profile release-opt --features heif",
+    "label": "Build release (minimal distribution)",
+    "command": "npm run tauri build -- -- --profile release-opt --no-default-features --features portable,cuda",
   },
   {
-    "label": "Format frontend code",
+    "label": "Format code",
     "command": "npm run format",
-  },
-  {
-    "label": "Build vcpkg (for HEIF support)",
-    "command": "./build-vcpkg-heif.bat",
   },
 ]

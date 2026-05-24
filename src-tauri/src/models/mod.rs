@@ -1,29 +1,31 @@
 mod common;
-pub mod errors;
+
 pub mod metaclip2;
 #[cfg(feature = "video")]
 pub mod video;
 
-use crate::models::errors::ModelError;
+use crate::errors::AppError;
 use ndarray::Array1;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::RwLock;
 
+type EmbedResult = Result<Array1<f32>, AppError>;
+type FileEmbedResult = (PathBuf, EmbedResult);
+type FilesEmbedResult = Result<Vec<FileEmbedResult>, AppError>;
+
 #[derive(Hash, Eq, PartialEq)]
 pub enum EmbeddingKind {
-    // Document,
-    Visual,
-    // Audio,
+    Text,
+    Vision,
 }
 
 impl EmbeddingKind {
     pub fn as_str(&self) -> &str {
         match self {
-            // Self::Document => "document",
-            Self::Visual => "visual",
-            // Self::Audio => "audio",
+            Self::Text => "text",
+            Self::Vision => "vision",
         }
     }
 }
@@ -76,29 +78,22 @@ pub trait Model: Send + Sync {
 }
 
 pub trait TextEncoder: Model {
-    fn load_text_encoder(&mut self) -> Result<(), ModelError>;
+    fn load_text_encoder(&mut self) -> Result<(), AppError>;
     fn unload_text_encoder(&mut self);
     fn is_text_encoder_loaded(&self) -> bool;
 
-    fn embed_text(&mut self, text: &str) -> Result<Array1<f32>, ModelError>;
+    fn embed_text(&mut self, text: &str) -> EmbedResult;
 }
 
 pub trait VisualEncoder: Model {
-    fn load_vision_encoder(&mut self) -> Result<(), ModelError>;
+    fn load_vision_encoder(&mut self) -> Result<(), AppError>;
     fn unload_vision_encoder(&mut self);
     fn is_vision_encoder_loaded(&self) -> bool;
 
-    fn embed_images(
-        &mut self,
-        paths: &[PathBuf],
-    ) -> Result<Vec<(PathBuf, Result<Array1<f32>, String>)>, ModelError>;
+    fn embed_images(&mut self, paths: &[PathBuf]) -> FilesEmbedResult;
 
     #[cfg(feature = "video")]
-    fn embed_video(
-        &mut self,
-        path: &Path,
-        num_frames: u32,
-    ) -> Result<Array1<f32>, ModelError>;
+    fn embed_video(&mut self, path: &Path, num_frames: u32) -> FilesEmbedResult;
 }
 
 pub trait VisualSearchModel: TextEncoder + VisualEncoder {}

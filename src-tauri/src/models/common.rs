@@ -1,14 +1,22 @@
-use crate::utils::open_image_as_rgb;
-use anyhow::Result;
+use crate::{errors::AppError, models::ModelManifest, utils::open_image_as_rgb};
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::Image};
 use image::RgbImage;
 use ort::{ep, ep::ExecutionProvider, session::Session};
 use std::path::Path;
+use tokenizers::tokenizer::Tokenizer;
 
-pub fn build_session(model_path: &str, cpu_only: bool) -> Result<(Session, &'static str)> {
+pub fn build_session(
+    models_base_dir: &Path,
+    manifest: &ModelManifest,
+    file_index: usize,
+    cpu_only: bool,
+) -> Result<(Session, &'static str), AppError> {
     let cuda = ep::CUDA::default();
 
-    let mut builder = Session::builder()?;
+    let mut builder = Session::builder().map_err(|e| AppError::ModelLoadFailed {
+        msg: e.to_string(),
+        model_name: manifest.name,
+    })?;
     let device = if cpu_only {
         "CPU"
     } else {
@@ -19,8 +27,26 @@ pub fn build_session(model_path: &str, cpu_only: bool) -> Result<(Session, &'sta
         }
     };
 
-    let session = builder.commit_from_file(model_path)?;
+    let session = builder
+        .commit_from_file(models_base_dir.join(manifest.files[file_index]))
+        .map_err(|e| AppError::ModelLoadFailed {
+            msg: e.to_string(),
+            model_name: manifest.name,
+        })?;
     Ok((session, device))
+}
+
+pub fn build_tokenizer(
+    models_base_dir: &Path,
+    manifest: &ModelManifest,
+    file_index: usize,
+) -> Result<Tokenizer, AppError> {
+    let tokenizer = Tokenizer::from_file(models_base_dir.join(manifest.files[file_index]))
+        .map_err(|e| AppError::TokenizerLoadFailed {
+            msg: e.to_string(),
+            model_name: manifest.name,
+        })?;
+    Ok(tokenizer)
 }
 
 pub fn clip_prepare_rgb(
@@ -73,7 +99,7 @@ pub fn clip_prepare_image(
     h: usize,
     mean: [f32; 3],
     std: [f32; 3],
-) -> Result<Vec<f32>, String> {
-    let img = open_image_as_rgb(path).map_err(|e| e.to_string())?;
+) -> Result<Vec<f32>, AppError> {
+    let img = open_image_as_rgb(path).map_err(|e| AppError::unknown(e))?;
     Ok(clip_prepare_rgb(&img, w, h, mean, std))
 }

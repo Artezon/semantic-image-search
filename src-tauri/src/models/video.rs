@@ -1,3 +1,4 @@
+use crate::errors::AppError;
 use ffmpeg_sidecar::command::FfmpegCommand;
 use ffmpeg_sidecar::event::FfmpegEvent;
 use image::RgbImage;
@@ -19,28 +20,33 @@ fn ffmpeg() -> FfmpegCommand {
     }
 }
 
-pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage>, String> {
+pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage>, AppError> {
     let num_frames = num_frames.max(1);
 
     // Probe duration
     let duration = {
         let mut dur = None;
-        ffmpeg()
+        let events = ffmpeg()
             .input(path.to_string_lossy())
             .spawn()
-            .map_err(|e| e.to_string())?
+            .map_err(|e| AppError::VideoReadFailed { msg: e.to_string() })?
             .iter()
-            .map_err(|e| e.to_string())?
-            .for_each(|e| {
-                if let FfmpegEvent::ParsedDuration(d) = e {
-                    dur = Some(d.duration);
-                }
-            });
-        dur.ok_or("Could not determine video duration")?
+            .map_err(|e| AppError::VideoReadFailed { msg: e.to_string() })?;
+        for event in events {
+            if let FfmpegEvent::ParsedDuration(d) = event {
+                dur = Some(d.duration);
+                break;
+            }
+        }
+        dur.ok_or(AppError::VideoReadFailed {
+            msg: "duration_error".to_string(),
+        })?
     };
 
     if duration <= 0.0 {
-        return Err("Video has zero or negative duration".to_string());
+        return Err(AppError::VideoReadFailed {
+            msg: "duration_error".to_string(),
+        });
     }
 
     // Build and run extraction command
@@ -52,12 +58,12 @@ pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage
     }
 
     cmd.args(["-vframes", &num_frames.to_string()]).rawvideo();
-
-    let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| AppError::VideoReadFailed { msg: e.to_string() })?;
     let frames: Vec<RgbImage> = child
         .iter()
-        .map_err(|e| e.to_string())?
+        .map_err(|e| AppError::VideoReadFailed { msg: e.to_string() })?
         .filter_map(|e| {
             if let FfmpegEvent::OutputFrame(frame) = e {
                 RgbImage::from_raw(frame.width, frame.height, frame.data)
@@ -70,7 +76,9 @@ pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage
     child.kill().ok();
 
     if frames.is_empty() {
-        return Err("No frames decoded".to_string());
+        return Err(AppError::VideoReadFailed {
+            msg: "no_frames_extracted".to_string(),
+        });
     }
 
     Ok(frames)

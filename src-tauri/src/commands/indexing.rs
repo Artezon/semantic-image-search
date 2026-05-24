@@ -1,22 +1,27 @@
+use crate::errors::AppError;
+use crate::frontend::IndexingStatusKey;
 use crate::{
     db::{FileEmbResult, FileType},
-    frontend::{
-        MessageKind, clear_index_status, set_is_indexing, show_message,
-        update_index_processing_status, update_index_status,
-    },
+    frontend::{MessageKind, MessagePayload, clear_index_status, update_index_status},
     models::{ModelManifest, VisualSearchModel},
     state::AppState,
-    utils::format_seconds,
 };
-use std::{
-    fmt::Write,
-    ops::Deref,
-    path::PathBuf,
-    sync::{Arc, RwLock, atomic::Ordering},
-    time::{Duration, Instant, UNIX_EPOCH},
-};
+use serde::Serialize;
+use std::ops::Deref;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock, atomic::Ordering};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State, command};
 use walkdir::WalkDir;
+
+#[derive(Serialize)]
+pub struct IndexingResult {
+    processed: usize,
+    total: usize,
+    elapsed_secs: u64,
+    stopped: bool,
+    errors: Vec<(String, AppError)>,
+}
 
 #[cfg(not(feature = "heif"))]
 static IMAGE_EXTENSIONS: [&str; 8] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif"];
@@ -35,51 +40,52 @@ struct FileList {
 }
 
 #[command]
-pub async fn index_directory(app_handle: AppHandle, dir: String, batch_size: u32) {
+pub async fn index_directory(
+    app_handle: AppHandle,
+    dir: String,
+    batch_size: u32,
+) -> Option<IndexingResult> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app_handle.state::<AppState>();
         let selected_model_manifest = state.selected_model;
+
+        if state.is_indexing.load(Ordering::Relaxed) {
+            MessagePayload::new("indexing_error", MessageKind::Warning)
+                .param("error", serde_json::json!("already_indexing"))
+                .emit(&app_handle);
+            return None;
+        }
+
         let selected_visual_model =
             Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
-        // let selected_kind = EmbeddingKind::Visual; // Currently only visual supported
+        // let selected_kind = EmbeddingKind::Vision; // Currently only vision (CLIP) model supported
 
         if !selected_visual_model
             .read()
             .unwrap()
             .is_vision_encoder_loaded()
         {
-            show_message(
-                &app_handle,
-                "Model not ready",
-                "Please wait for the model to load.",
-                MessageKind::Info,
-            );
+            MessagePayload::new("model_not_ready", MessageKind::Info).emit(&app_handle);
             clear_index_status(&app_handle);
-            return;
+            return None;
         }
 
         let dir_path = PathBuf::from(dir);
 
         if !dir_path.is_dir() {
-            show_message(
-                &app_handle,
-                "Invalid directory",
-                "Please select a valid directory.",
-                MessageKind::Warning,
-            );
+            MessagePayload::new("invalid_directory", MessageKind::Warning).emit(&app_handle);
             clear_index_status(&app_handle);
-            return;
+            return None;
         }
 
         let start_time = Instant::now();
 
-        *state.is_indexing.lock().unwrap() = true;
-        set_is_indexing(&app_handle, true);
+        state.is_indexing.store(true, Ordering::Relaxed);
         state.indexing_stopped.store(false, Ordering::Relaxed);
 
         let mut total = 0usize;
         let mut processed = 0usize;
-        let mut errors: Vec<String> = vec![];
+        let mut errors: Vec<(String, AppError)> = vec![];
 
         let indexing_result = dir_indexing(
             &app_handle,
@@ -94,58 +100,41 @@ pub async fn index_directory(app_handle: AppHandle, dir: String, batch_size: u32
         );
 
         if let Err(e) = indexing_result {
-            update_index_status(&app_handle, Some(1.0), "Indexing error occurred");
-            show_message(&app_handle, "Indexing error", &e, MessageKind::Error);
-            return;
+            update_index_status(&app_handle, 0, 0, 0, IndexingStatusKey::FatalError);
+            MessagePayload::new("indexing_error", MessageKind::Error)
+                .param("error", serde_json::json!(e))
+                .emit(&app_handle);
+            return None;
         }
 
-        let elapsed_secs = start_time.elapsed().as_secs();
-        let mut summary = format!(
-            "Processed {processed} / {total} files.\n\nElapsed time: {}",
-            format_seconds(elapsed_secs)
-        );
-        let err_count = errors.len();
-        if err_count > 0 {
-            write!(
-                summary,
-                "\n\nErrors ({}):\n\n{}",
-                err_count,
-                errors[..err_count.min(5)].join("\n")
-            )
-            .unwrap();
-            if err_count == 6 {
-                write!(summary, "\n... and 1 more error.").unwrap();
-            } else if err_count > 6 {
-                write!(summary, "\n... and {} more errors.", err_count - 5).unwrap();
-            }
-        }
-
+        let stopped = state.indexing_stopped.load(Ordering::Relaxed);
         update_index_status(
             &app_handle,
-            Some(1.0),
-            &if state.indexing_stopped.load(Ordering::Relaxed) {
-                format!("Stopped! Processed {processed} / {total} files.")
+            processed,
+            total,
+            errors.len(),
+            if stopped {
+                IndexingStatusKey::Stopped
             } else {
-                format!("Completed! Processed {processed} / {total} files.")
+                IndexingStatusKey::Completed
             },
-        );
-        show_message(
-            &app_handle,
-            if state.indexing_stopped.load(Ordering::Relaxed) {
-                "Processing stopped"
-            } else {
-                "Processing complete"
-            },
-            &summary,
-            MessageKind::Info,
         );
 
-        *state.is_indexing.lock().unwrap() = false;
-        set_is_indexing(&app_handle, false);
+        let elapsed_secs = start_time.elapsed().as_secs();
+
+        state.is_indexing.store(false, Ordering::Relaxed);
         state.indexing_stopped.store(false, Ordering::Relaxed);
+
+        Some(IndexingResult {
+            processed,
+            total,
+            elapsed_secs,
+            stopped,
+            errors,
+        })
     })
     .await
-    .unwrap();
+    .unwrap()
 }
 
 fn dir_indexing(
@@ -157,8 +146,8 @@ fn dir_indexing(
     selected_visual_model: Arc<RwLock<dyn VisualSearchModel>>,
     total: &mut usize,
     processed: &mut usize,
-    errors: &mut Vec<String>,
-) -> Result<(), String> {
+    errors: &mut Vec<(String, AppError)>,
+) -> Result<(), AppError> {
     let emb_type_ids = state
         .db
         .add_model_to_db(selected_model_manifest)
@@ -197,11 +186,7 @@ fn dir_indexing(
     }
 
     if *total == 0 {
-        update_index_status(
-            &app_handle,
-            Some(1.0),
-            "No media files found in the directory.",
-        );
+        update_index_status(&app_handle, 0, 0, 0, IndexingStatusKey::Completed);
         return Ok(());
     }
 
@@ -264,11 +249,12 @@ fn dir_indexing(
                     Some(_) => {
                         *processed += 1;
                         if last_progress_update.elapsed() > progress_update_interval {
-                            update_index_processing_status(
+                            update_index_status(
                                 &app_handle,
                                 *processed,
                                 *total,
                                 errors.len(),
+                                IndexingStatusKey::Indexing,
                             );
                             last_progress_update = Instant::now();
                         }
@@ -277,7 +263,13 @@ fn dir_indexing(
             }
         }
 
-        update_index_processing_status(&app_handle, *processed, *total, errors.len());
+        update_index_status(
+            &app_handle,
+            *processed,
+            *total,
+            errors.len(),
+            IndexingStatusKey::Indexing,
+        );
 
         for chunk in needs_indexing.chunks(batch_size as usize) {
             if state.indexing_stopped.load(Ordering::Relaxed) {
@@ -288,29 +280,25 @@ fn dir_indexing(
                 FileType::IMG => selected_visual_model.write().unwrap().embed_images(chunk),
                 #[cfg(feature = "video")]
                 FileType::VID => {
-                    let path = chunk[0].clone();
+                    let path = &chunk[0];
                     let num_frames = state.config.read().unwrap().video_frames;
-                    let emb = selected_visual_model
+                    selected_visual_model
                         .write()
                         .unwrap()
-                        .embed_video(&path, num_frames);
-                    match emb {
-                        Ok(emb) => Ok(vec![(path, Ok(emb))]),
-                        Err(e) => Ok(vec![(path, Err(e.to_string()))]),
-                    }
+                        .embed_video(&path, num_frames)
                 }
             };
 
             match result {
-                Ok(vec) => {
+                Ok(emb_results) => {
                     let mut paths_and_embeddings: Vec<(PathBuf, Vec<f32>)> = vec![];
-                    for (path, emb_res) in vec {
+                    for (path, emb_res) in emb_results {
                         match emb_res {
                             Ok(emb) => {
                                 paths_and_embeddings.push((path, emb.to_vec()));
                             }
                             Err(e) => {
-                                errors.push(format!("Skipped {}\n{}\n", path.display(), e));
+                                errors.push((path.display().to_string(), e));
                             }
                         }
                     }
@@ -323,12 +311,18 @@ fn dir_indexing(
                 }
                 Err(e) => {
                     for path in chunk {
-                        errors.push(format!("Skipped {}\n{:?}\n", path.display(), e));
+                        errors.push((path.display().to_string(), e.clone()));
                     }
                 }
             }
             if last_progress_update.elapsed() > progress_update_interval {
-                update_index_processing_status(&app_handle, *processed, *total, errors.len());
+                update_index_status(
+                    &app_handle,
+                    *processed,
+                    *total,
+                    errors.len(),
+                    IndexingStatusKey::Indexing,
+                );
                 last_progress_update = Instant::now();
             }
         }

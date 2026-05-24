@@ -1,6 +1,6 @@
 [package]
 name = "semantic-search"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Tauri App"
 authors = ["Artezon"]
 edition = "2024"
@@ -26,13 +26,14 @@ anyhow = "1"
 image = "0.25"
 fast_image_resize = { version = "6", features = ["image"] }
 ndarray = "0.17"
-ort = "2.0.0-rc.12"
+ort = { version = "2.0.0-rc.12", features = ["load-dynamic"] }
 rayon = "1"
 tokenizers = "0.23"
 walkdir = "2"
 zerocopy = "0.8"
 indoc = "2"
 libloading = "0.9"
+sys-locale = "0.3"
 libheif-rs = { version = "2.7", features = ["image", "embedded-libheif"], optional = true }
 ffmpeg-sidecar = { version = "2.5", default-features = false, optional = true }
 
@@ -40,9 +41,8 @@ ffmpeg-sidecar = { version = "2.5", default-features = false, optional = true }
 tauri-plugin-window-state = "2"
 
 [features]
-default = ["portable", "dynamic-ort", "cuda", "video", "heif"]
+default = ["portable", "cuda", "video", "heif"]
 portable = []
-dynamic-ort = ["ort/load-dynamic"]
 cuda = ["ort/cuda"]
 video = ["ffmpeg-sidecar"]
 heif = ["libheif-rs"]

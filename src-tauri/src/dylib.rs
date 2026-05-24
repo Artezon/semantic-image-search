@@ -1,3 +1,4 @@
+use crate::errors::AppError;
 use libloading::Library;
 use std::{path::Path, sync::OnceLock};
 
@@ -55,24 +56,27 @@ static DYLIB_LIST: [DylibEntry; 11] = [
 
 static PRELOADED_LIBS: OnceLock<Vec<Library>> = OnceLock::new();
 
-pub fn preload_libs(libs_dir: &Path) -> Result<(), String> {
+pub fn preload_libs(libs_dir: &Path) -> Result<(), AppError> {
     let mut libs: Vec<Library> = vec![];
     for entry in &DYLIB_LIST {
         let path = libs_dir.join(entry.filename);
         if entry.required && !path.exists() {
-            return Err(format!("Library '{}' not found", path.display()));
+            return Err(AppError::LibraryLoadFailed {
+                msg: "not_found".to_string(),
+                name: path.display().to_string(),
+            });
         }
         unsafe {
-            match Library::new(path) {
+            match Library::new(&path) {
                 Ok(lib) => {
                     libs.push(lib);
                 }
                 Err(e) => {
                     if entry.required {
-                        return Err(format!(
-                            "Library '{}' failed to load: {}",
-                            entry.filename, e
-                        ));
+                        return Err(AppError::LibraryLoadFailed {
+                            msg: e.to_string(),
+                            name: path.display().to_string(),
+                        });
                     }
                 }
             }

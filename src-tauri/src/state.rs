@@ -2,12 +2,26 @@ use crate::db::Database;
 use crate::models;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Mutex, RwLock};
 
-const PATH_CONFIG: &'static str = "config.json";
-const PATH_DB: &'static str = "index.db";
-const PATH_MODELS_DIR: &'static str = "models";
+pub const PATH_CONFIG: &'static str = "config.json";
+pub const PATH_DB: &'static str = "index.db";
+pub const PATH_MODELS_DIR: &'static str = "models";
+
+pub fn resolve_lang(lang: &str) -> String {
+    if lang == "system" {
+        sys_locale::get_locale()
+            .unwrap_or_default()
+            .trim()
+            .split(['-', '_'])
+            .next()
+            .unwrap_or("en")
+            .to_string()
+    } else {
+        lang.to_string()
+    }
+}
 
 pub struct AppState {
     pub data_path: PathBuf,
@@ -15,7 +29,7 @@ pub struct AppState {
     pub db: Database,
     pub model_manager: models::ModelManager,
     pub selected_model: &'static models::ModelManifest,
-    pub is_indexing: Mutex<bool>,
+    pub is_indexing: AtomicBool,
     pub indexing_stopped: AtomicBool,
 }
 
@@ -50,7 +64,7 @@ impl AppState {
             config: RwLock::new(Config::load(&data_path.join(PATH_CONFIG))),
             model_manager,
             selected_model,
-            is_indexing: Mutex::new(false),
+            is_indexing: AtomicBool::new(false),
             db,
             data_path,
             indexing_stopped: AtomicBool::new(false),
@@ -63,33 +77,29 @@ impl AppState {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct Config {
-    #[serde(default = "default_video_frames")]
+    pub lang: String,
     pub video_frames: u32,
-}
-
-fn default_video_frames() -> u32 {
-    5
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            video_frames: default_video_frames(),
+            lang: "system".into(),
+            video_frames: 5,
         }
     }
 }
 
 impl Config {
     fn load(config_json_path: &Path) -> Self {
-        let config = match std::fs::read_to_string(config_json_path)
+        let config: Config = std::fs::read_to_string(config_json_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-        {
-            Some(config) => config,
-            None => Config::default(),
-        };
+            .unwrap_or_default();
+
         config.save(config_json_path);
         config
     }

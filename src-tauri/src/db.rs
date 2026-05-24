@@ -1,5 +1,5 @@
 use crate::models::{EmbeddingKind, ModelManifest};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use include_dir::{Dir, include_dir};
 use indoc::{formatdoc, indoc};
 use rusqlite::{Connection, OptionalExtension, ffi::sqlite3_auto_extension, params};
@@ -152,7 +152,7 @@ impl Database {
         &self,
         model_manifest: &ModelManifest,
         kind: &EmbeddingKind,
-    ) -> Result<u32> {
+    ) -> Result<Option<u32>> {
         self.with_conn(|conn| {
             let mut stmt =
                 conn.prepare("SELECT id FROM emb_type WHERE kind = ?1 AND model_name = ?2")?;
@@ -160,8 +160,8 @@ impl Database {
                 .query_row([kind.as_str(), model_manifest.name], |row| {
                     row.get::<_, u32>(0)
                 })
-                .map_err(|e| anyhow!(e));
-            id
+                .optional()?;
+            Ok(id)
         })
     }
 

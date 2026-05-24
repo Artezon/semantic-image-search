@@ -1,11 +1,15 @@
 #[cfg(feature = "video")]
 use crate::models::common::clip_prepare_rgb;
-use crate::models::common::{build_session, clip_prepare_image};
 use crate::models::{
-    EmbeddingKind, Model, ModelError, ModelManifest, TextEncoder, VisualEncoder, VisualSearchModel,
+    EmbeddingKind, FileEmbedResult, Model, ModelManifest, TextEncoder, VisualEncoder,
+    VisualSearchModel,
+    common::{build_session, build_tokenizer, clip_prepare_image},
 };
 use crate::utils::l2_normalize;
-use anyhow::Result;
+use crate::{
+    errors::AppError,
+    models::{EmbedResult, FilesEmbedResult},
+};
 use ndarray::{Array1, Array2, Array4, ArrayView2, Axis};
 use ort::{inputs, session::Session, value::TensorRef};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -16,11 +20,11 @@ pub static MANIFEST: ModelManifest = ModelManifest {
     name: "metaclip2_worldwide_b16_384",
     dim: 512,
     files: &[
-        "metaclip2/text_model.onnx",
         "metaclip2/tokenizer.json",
+        "metaclip2/text_model.onnx",
         "metaclip2/vision_model.onnx",
     ],
-    capabilities: &[EmbeddingKind::Visual],
+    capabilities: &[EmbeddingKind::Vision],
 };
 
 const MEAN: [f32; 3] = [0.48145466f32, 0.4578275, 0.40821073];
@@ -75,21 +79,13 @@ impl Model for MetaCLIP2B16_384Model {
 impl VisualSearchModel for MetaCLIP2B16_384Model {}
 
 impl TextEncoder for MetaCLIP2B16_384Model {
-    fn load_text_encoder(&mut self) -> Result<(), ModelError> {
+    fn load_text_encoder(&mut self) -> Result<(), AppError> {
         if self.is_text_encoder_loaded() {
             return Ok(());
         }
 
-        let text_model_path = self.models_base_dir.join("metaclip2/text_model.onnx");
-        let tok_path = self.models_base_dir.join("metaclip2/tokenizer.json");
-
-        let (text_session, device_str) = build_session(text_model_path.to_str().unwrap(), false)
-            .map_err(|e| {
-                ModelError::LoadFailed(format!("MetaCLIP 2 text model loading failed: {}", e))
-            })?;
-        let tokenizer = Tokenizer::from_file(tok_path.to_str().unwrap()).map_err(|e| {
-            ModelError::LoadFailed(format!("MetaCLIP 2 tokenizer loading failed: {}", e))
-        })?;
+        let (text_session, device_str) = build_session(&self.models_base_dir, &MANIFEST, 1, false)?;
+        let tokenizer = build_tokenizer(&self.models_base_dir, &MANIFEST, 0)?;
 
         self.text_session = Some(text_session);
         self.tokenizer = Some(tokenizer);
@@ -107,13 +103,12 @@ impl TextEncoder for MetaCLIP2B16_384Model {
         self.text_session.is_some() && self.tokenizer.is_some()
     }
 
-    fn embed_text(&mut self, text: &str) -> Result<Array1<f32>, ModelError> {
+    fn embed_text(&mut self, text: &str) -> EmbedResult {
         let encoding = self
             .tokenizer
             .as_ref()
-            .ok_or(ModelError::NotLoaded)?
-            .encode(text, true)
-            .map_err(|e| ModelError::InferenceFailed(format!("Failed tokenization: {}", e)))?;
+            .ok_or(AppError::ModelNotReady)?
+            .encode(text, true)?;
 
         let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
         let attention_mask: Vec<i64> = encoding
@@ -128,15 +123,13 @@ impl TextEncoder for MetaCLIP2B16_384Model {
         let attention_mask_arr = Array2::from_shape_vec((1, seq_len), attention_mask)?;
 
         let outputs = self.text_session.as_mut().unwrap().run(inputs![
-            "input_ids"     => TensorRef::from_array_view(input_ids_arr.view())?,
-            "attention_mask"=> TensorRef::from_array_view(attention_mask_arr.view())?,
+            "input_ids" => TensorRef::from_array_view(input_ids_arr.view())?,
+            "attention_mask" => TensorRef::from_array_view(attention_mask_arr.view())?,
         ])?;
 
         let embed_output = &outputs["text_embeds"];
 
-        let (shape, raw_data) = embed_output
-            .try_extract_tensor::<f32>()
-            .map_err(|e| ModelError::InferenceFailed(format!("Failed inference: {}", e)))?;
+        let (shape, raw_data) = embed_output.try_extract_tensor::<f32>()?;
         let embed = ArrayView2::from_shape((shape[0] as usize, shape[1] as usize), raw_data)?;
 
         let flat = embed.index_axis(Axis(0), 0).to_owned();
@@ -145,17 +138,13 @@ impl TextEncoder for MetaCLIP2B16_384Model {
 }
 
 impl VisualEncoder for MetaCLIP2B16_384Model {
-    fn load_vision_encoder(&mut self) -> Result<(), ModelError> {
+    fn load_vision_encoder(&mut self) -> Result<(), AppError> {
         if self.is_vision_encoder_loaded() {
             return Ok(());
         }
 
-        let vision_model_path = self.models_base_dir.join("metaclip2/vision_model.onnx");
-
         let (vision_session, device_str) =
-            build_session(vision_model_path.to_str().unwrap(), false).map_err(|e| {
-                ModelError::LoadFailed(format!("MetaCLIP 2 vision model loading failed: {}", e))
-            })?;
+            build_session(&self.models_base_dir, &MANIFEST, 2, false)?;
 
         self.vision_session = Some(vision_session);
         self.vision_session_device = device_str.to_string();
@@ -171,24 +160,21 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
         self.vision_session.is_some()
     }
 
-    fn embed_images(
-        &mut self,
-        paths: &[PathBuf],
-    ) -> Result<Vec<(PathBuf, Result<Array1<f32>, String>)>, ModelError> {
+    fn embed_images(&mut self, paths: &[PathBuf]) -> FilesEmbedResult {
         if self.vision_session.is_none() {
-            return Err(ModelError::NotLoaded);
+            return Err(AppError::ModelNotReady);
         }
 
         let w = self.input_img_w_and_h as usize;
         let h = self.input_img_w_and_h as usize;
 
-        let imgs: Vec<Result<Vec<f32>, String>> = paths
+        let imgs: Vec<Result<Vec<f32>, AppError>> = paths
             .par_iter()
             .map(|path| clip_prepare_image(path, w, h, MEAN, STD))
             .collect();
 
         let mut batch = Vec::new();
-        let mut errors: Vec<Option<String>> = Vec::new();
+        let mut errors: Vec<Option<AppError>> = Vec::new();
         for res in imgs {
             match res {
                 Ok(vec) => {
@@ -211,7 +197,7 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
         let pixel_tensor = Array4::from_shape_vec((batch_size, 3, h, w), flat)?;
 
         let outputs = self.vision_session.as_mut().unwrap().run(inputs![
-            "pixel_values"  => TensorRef::from_array_view(pixel_tensor.view())?,
+            "pixel_values" => TensorRef::from_array_view(pixel_tensor.view())?,
         ])?;
 
         let embed_output = &outputs["image_embeds"];
@@ -220,7 +206,7 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
 
         let mut path_iter = paths.iter();
         let mut embed_iter = embed_2d.outer_iter();
-        let mut result: Vec<(PathBuf, Result<Array1<f32>, String>)> = Vec::new();
+        let mut result: Vec<FileEmbedResult> = Vec::new();
         for err in errors {
             let path = path_iter.next().unwrap();
             match err {
@@ -237,13 +223,12 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
     }
 
     #[cfg(feature = "video")]
-    fn embed_video(&mut self, path: &Path, num_frames: u32) -> Result<Array1<f32>, ModelError> {
+    fn embed_video(&mut self, path: &Path, num_frames: u32) -> FilesEmbedResult {
         if self.vision_session.is_none() {
-            return Err(ModelError::NotLoaded);
+            return Err(AppError::ModelNotReady);
         }
 
-        let frames = crate::models::video::extract_video_frames(path, num_frames)
-            .map_err(|e| ModelError::InferenceFailed(e))?;
+        let frames = crate::models::video::extract_video_frames(path, num_frames)?;
 
         let w = self.input_img_w_and_h as usize;
         let h = self.input_img_w_and_h as usize;
@@ -253,16 +238,10 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
             .map(|frame| clip_prepare_rgb(frame, w, h, MEAN, STD))
             .collect();
 
-        if frame_tensors.is_empty() {
-            return Err(ModelError::InferenceFailed(
-                "No frames extracted from video".to_string(),
-            ));
-        }
-
         let batch_size = frame_tensors.len();
         let flat: Vec<f32> = frame_tensors.into_iter().flatten().collect();
         let pixel_tensor = Array4::from_shape_vec((batch_size, 3, h, w), flat)
-            .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
+            .map_err(|e| AppError::ModelInferenceFailed { msg: e.to_string() })?;
 
         let outputs = self.vision_session.as_mut().unwrap().run(inputs![
             "pixel_values" => TensorRef::from_array_view(pixel_tensor.view())?,
@@ -276,6 +255,6 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
             .mean_axis(Axis(0))
             .unwrap_or_else(|| Array1::zeros(shape[1] as usize));
 
-        Ok(l2_normalize(averaged))
+        Ok(vec![(path.to_path_buf(), Ok(l2_normalize(averaged)))])
     }
 }

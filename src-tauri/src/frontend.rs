@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -12,9 +13,29 @@ pub enum MessageKind {
 
 #[derive(Clone, Serialize, Default)]
 pub struct MessagePayload {
-    title: String,
-    msg: String,
-    kind: MessageKind,
+    pub key: String,
+    pub kind: MessageKind,
+    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub params: std::collections::HashMap<String, serde_json::Value>,
+}
+
+impl MessagePayload {
+    pub fn new(key: &str, kind: MessageKind) -> Self {
+        Self {
+            key: key.to_string(),
+            kind,
+            params: HashMap::new(),
+        }
+    }
+
+    pub fn param(mut self, k: &str, v: serde_json::Value) -> Self {
+        self.params.insert(k.to_string(), v);
+        self
+    }
+
+    pub fn emit(&self, app_handle: &AppHandle) {
+        let _ = app_handle.emit("message", self).unwrap();
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -29,82 +50,78 @@ pub enum ModelStatus {
 #[derive(Clone, Serialize, Default)]
 pub struct ModelStatusPayload {
     pub status: ModelStatus,
-    pub status_text: String,
+    pub status_key: String,
     pub device_text: String,
+    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub params: std::collections::HashMap<String, serde_json::Value>,
+}
+
+impl ModelStatusPayload {
+    pub fn new(status: ModelStatus, status_key: &str) -> Self {
+        Self {
+            status,
+            status_key: status_key.to_string(),
+            device_text: String::new(),
+            params: HashMap::new(),
+        }
+    }
+
+    pub fn device(mut self, text: &str) -> Self {
+        self.device_text = text.to_string();
+        self
+    }
+
+    pub fn param(mut self, k: &str, v: serde_json::Value) -> Self {
+        self.params.insert(k.to_string(), v);
+        self
+    }
+
+    pub fn emit(&self, app_handle: &AppHandle) {
+        let _ = app_handle.emit("model-status", self).unwrap();
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IndexingStatusKey {
+    #[default]
+    Idle,
+    Indexing,
+    Completed,
+    Stopped,
+    FatalError,
 }
 
 #[derive(Clone, Serialize, Default)]
-pub struct IndexStatusPayload {
-    progress: Option<f32>,
-    text: String,
+pub struct IndexingStatusPayload {
+    pub processed: usize,
+    pub total: usize,
+    pub errors: usize,
+    pub text_key: IndexingStatusKey,
 }
 
-pub fn show_message(app_handle: &AppHandle, title: &str, msg: &str, kind: MessageKind) {
-    let _ = app_handle
-        .emit(
-            "message",
-            &MessagePayload {
-                title: title.to_string(),
-                msg: msg.to_string(),
-                kind,
-            },
-        )
-        .unwrap();
-}
-
-pub fn update_model_status(
-    app_handle: &AppHandle,
-    status: ModelStatus,
-    status_text: &str,
-    device_text: &str,
-) {
-    let _ = app_handle
-        .emit(
-            "model-status",
-            &ModelStatusPayload {
-                status,
-                status_text: status_text.to_string(),
-                device_text: device_text.to_string(),
-            },
-        )
-        .unwrap();
-}
-
-pub fn update_model_status_from_payload(app_handle: &AppHandle, payload: &ModelStatusPayload) {
-    let _ = app_handle.emit("model-status", payload).unwrap();
-}
-
-pub fn update_index_status(app_handle: &AppHandle, progress: Option<f32>, text: &str) {
-    let _ = app_handle
-        .emit(
-            "index-status",
-            &IndexStatusPayload {
-                progress,
-                text: text.to_string(),
-            },
-        )
-        .unwrap();
-}
-
-pub fn update_index_processing_status(
+pub fn update_index_status(
     app_handle: &AppHandle,
     processed: usize,
     total: usize,
     errors: usize,
+    text_key: IndexingStatusKey,
 ) {
-    let mut msg = format!("Processed {processed} / {total} files...");
-    if errors > 0 {
-        msg += &format!(" ({errors} errors)");
-    }
-    update_index_status(&app_handle, Some(processed as f32 / total as f32), &msg);
+    let _ = app_handle
+        .emit(
+            "index-status",
+            &IndexingStatusPayload {
+                processed,
+                total,
+                errors,
+                text_key,
+            },
+        )
+        .unwrap();
 }
 
 pub fn clear_index_status(app_handle: &AppHandle) {
-    update_index_status(&app_handle, Some(1.0), "")
-}
-
-pub fn set_is_indexing(app_handle: &AppHandle, is_indexing: bool) {
-    let _ = app_handle.emit("is-indexing", is_indexing).unwrap();
+    update_index_status(app_handle, 0, 0, 0, IndexingStatusKey::Idle);
 }
 
 pub fn clear_results(app_handle: &AppHandle) {

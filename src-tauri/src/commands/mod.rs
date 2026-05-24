@@ -7,6 +7,9 @@ pub mod thumbnail;
 macro_rules! get_handlers {
     () => {
         tauri::generate_handler![
+            commands::status::get_config,
+            commands::status::get_current_lang,
+            commands::status::update_config,
             commands::status::get_indexed_count,
             commands::status::get_model_status,
             commands::indexing::index_directory,

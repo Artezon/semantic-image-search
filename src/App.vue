@@ -10,25 +10,32 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { message } from "@tauri-apps/plugin-dialog";
+import i18n from "./i18n";
 import TitleBar from "./components/TitleBar.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import ResultsPanel from "./components/ResultsPanel.vue";
 import {
-  modelStatusText,
+  modelStatusKey,
   modelStatusColor,
   deviceText,
-  indexStatusText,
+  modelStatusParams,
   indexProgress,
-  isIndexing,
+  indexProcessed,
+  indexTotal,
+  indexErrors,
+  indexTextKey,
+  indexedFilesCount,
   searchResults,
 } from "./store";
 import type { IndexStatus, ModelStatus } from "./types";
 
+const { t } = useI18n();
 const appWindow = getCurrentWindow();
 
 onMounted(async () => {
@@ -52,48 +59,66 @@ onMounted(async () => {
   await appWindow.show();
 
   await setupListeners();
-  const count = await invoke("get_indexed_count");
-  indexStatusText.value = `${count} indexed files`;
+
+  const lang = await invoke<string>("get_current_lang");
+  if ((i18n.global.availableLocales as string[]).includes(lang)) {
+    (i18n.global.locale as string) = lang;
+  }
+
+  indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
   await invoke("get_model_status");
 });
 
 // Backend listeners
 async function setupListeners() {
   await listen<{
-    title: string;
-    msg: string;
+    key: string;
     kind: "info" | "error" | "warning";
+    params?: Record<string, unknown>;
   }>("message", (event) => {
-    const { title, msg, kind } = event.payload;
+    const { key, kind, params } = event.payload;
+
+    const title = t(`message.${key}.title`, params || {});
+    const msg = t(`message.${key}.msg`, params || {});
     message(msg, { title, kind });
   });
 
   await listen<ModelStatus>("model-status", (event) => {
-    const { status, status_text, device_text } = event.payload;
+    const { status, status_key, device_text, params } = event.payload;
     const colors = {
       neutral: "var(--text-secondary)",
       success: "var(--text-success)",
       error: "var(--text-failure)",
     };
     modelStatusColor.value = colors[status];
-    modelStatusText.value = status_text;
-    deviceText.value = device_text || "unknown";
+    modelStatusKey.value = status_key;
+    deviceText.value = device_text || t("device_unknown");
+    modelStatusParams.value = params || {};
   });
 
   await listen<IndexStatus>("index-status", (event) => {
-    const { progress, text } = event.payload;
-    indexProgress.value = progress * 100;
-    indexStatusText.value = text;
-  });
-
-  await listen<boolean>("is-indexing", (event) => {
-    isIndexing.value = event.payload;
+    const { processed, total, errors, text_key } = event.payload;
+    indexProcessed.value = processed;
+    indexTotal.value = total;
+    indexErrors.value = errors;
+    indexTextKey.value = text_key;
   });
 
   await listen("clear-results", () => {
     searchResults.value = null;
   });
+
+  await listen<string>("lang-changed", (event) => {
+    const locale = event.payload;
+    (i18n.global.locale as string) = (i18n.global.availableLocales as string[]).includes(locale)
+      ? locale
+      : "en";
+  });
 }
+
+watch([indexProcessed, indexTotal], ([processed, total]) => {
+  indexProgress.value = total > 0 ? processed / total : 0;
+});
 </script>
 
 <style scoped>
