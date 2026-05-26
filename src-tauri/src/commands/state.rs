@@ -1,7 +1,7 @@
 use crate::{
     dylib::preload_libs,
     frontend::{ModelStatus, ModelStatusPayload},
-    state::{self, AppState},
+    state::{self, AppState, Config},
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -10,42 +10,27 @@ use tauri::Emitter;
 use tauri::{AppHandle, Manager, State, command};
 
 #[command]
-pub fn get_config(state: State<'_, AppState>) -> state::Config {
+pub fn get_config(state: State<'_, AppState>) -> Config {
     state.config.read().unwrap().clone()
 }
 
 #[command]
-pub fn get_current_lang(state: State<'_, AppState>) -> String {
-    let config = state.config.read().unwrap();
-    state::resolve_lang(&config.lang)
+pub fn get_default_config() -> Config {
+    Config::default()
 }
 
 #[command]
-pub fn update_config(app_handle: AppHandle, updates: HashMap<String, Value>) {
-    let state = app_handle.state::<AppState>();
-    let lang_changed: bool;
-    let resolved_lang: String;
-    {
-        let mut config = state.config.write().unwrap();
-        let old_lang = config.lang.clone();
-
-        let mut config_value = serde_json::to_value(&*config).unwrap();
-        if let Some(obj) = config_value.as_object_mut() {
-            for (key, value) in updates {
-                obj.insert(key, value);
-            }
-        }
-        *config = serde_json::from_value(config_value).unwrap();
-
-        lang_changed = config.lang != old_lang;
-        resolved_lang = state::resolve_lang(&config.lang);
-    }
-
+pub fn update_config(state: State<'_, AppState>, updates: HashMap<String, Value>) {
+    state.update_config(updates);
     state.save_config();
+}
 
-    if lang_changed {
-        let _ = app_handle.emit("lang-changed", &resolved_lang);
-    }
+#[command]
+pub fn apply_locale(app_handle: AppHandle) {
+    let state = app_handle.state::<AppState>();
+    let config = state.config.read().unwrap();
+    let resolved_lang = state::resolve_lang(&config.lang);
+    let _ = app_handle.emit("update-locale", &resolved_lang);
 }
 
 #[command]

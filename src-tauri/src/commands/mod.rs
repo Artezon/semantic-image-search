@@ -1,17 +1,18 @@
 pub mod indexing;
 pub mod search;
-pub mod status;
+pub mod state;
 pub mod thumbnail;
 
 #[macro_export]
 macro_rules! get_handlers {
     () => {
         tauri::generate_handler![
-            commands::status::get_config,
-            commands::status::get_current_lang,
-            commands::status::update_config,
-            commands::status::get_indexed_count,
-            commands::status::get_model_status,
+            commands::state::get_config,
+            commands::state::get_default_config,
+            commands::state::apply_locale,
+            commands::state::update_config,
+            commands::state::get_indexed_count,
+            commands::state::get_model_status,
             commands::indexing::index_directory,
             commands::indexing::stop_indexing,
             commands::search::search,

@@ -1,5 +1,7 @@
 use crate::db::Database;
 use crate::models;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -69,6 +71,17 @@ impl AppState {
             data_path,
             indexing_stopped: AtomicBool::new(false),
         }
+    }
+
+    pub fn update_config(&self, updates: HashMap<String, Value>) {
+        let mut config = self.config.write().unwrap();
+        let mut config_value = serde_json::to_value(&*config).unwrap();
+        if let Some(obj) = config_value.as_object_mut() {
+            for (key, value) in updates {
+                obj.insert(key, value);
+            }
+        }
+        *config = serde_json::from_value(config_value).unwrap();
     }
 
     pub fn save_config(&self) {

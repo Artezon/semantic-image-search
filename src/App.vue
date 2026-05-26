@@ -59,11 +59,7 @@ onMounted(async () => {
 
   await setupListeners();
 
-  const lang = await invoke<string>("get_current_lang");
-  if (availableLocales.includes(lang)) {
-    locale.value = lang;
-  }
-
+  await invoke("apply_locale");
   indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
   await invoke("get_model_status");
 });
@@ -107,9 +103,11 @@ async function setupListeners() {
     searchResults.value = null;
   });
 
-  await listen<string>("lang-changed", (event) => {
+  await listen<string>("update-locale", (event) => {
     const newLocale = event.payload;
-    locale.value = availableLocales.includes(newLocale) ? newLocale : "en";
+    if (newLocale !== locale.value) {
+      locale.value = availableLocales.includes(newLocale) ? newLocale : "en";
+    }
   });
 }
 
