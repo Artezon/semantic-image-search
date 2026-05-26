@@ -285,6 +285,10 @@ fn dir_indexing(
                 }
             };
 
+            if state.indexing_stopped.load(Ordering::Relaxed) {
+                return Ok(());
+            }
+
             match result {
                 Ok(emb_results) => {
                     let mut paths_and_embeddings: Vec<(PathBuf, Vec<f32>)> = vec![];

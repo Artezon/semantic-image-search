@@ -379,4 +379,8 @@ impl Database {
                 .map_err(Into::into)
         })
     }
+
+    pub fn clear_index(&self) -> Result<usize> {
+        self.with_conn(|conn| Ok(conn.execute("DELETE FROM file", [])?))
+    }
 }

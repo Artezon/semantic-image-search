@@ -13,6 +13,7 @@ macro_rules! get_handlers {
             commands::state::update_config,
             commands::state::get_indexed_count,
             commands::state::get_model_status,
+            commands::state::clear_index,
             commands::indexing::index_directory,
             commands::indexing::stop_indexing,
             commands::search::search,

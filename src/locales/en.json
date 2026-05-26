@@ -18,6 +18,7 @@
   "sidebar.score_threshold": "Score threshold:",
   "sidebar.device": "Device: {device}",
   "sidebar.indexed_count": "Total files in index: {count}",
+  "sidebar.clear_index": "Clear index",
 
   "results.title": "Search Results",
   "results.searching": "Searching...",

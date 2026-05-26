@@ -1,5 +1,6 @@
 use crate::{
     dylib::preload_libs,
+    errors::AppError,
     frontend::{ModelStatus, ModelStatusPayload},
     state::{self, AppState, Config},
 };
@@ -37,6 +38,11 @@ pub fn apply_locale(app_handle: AppHandle) {
 pub async fn get_indexed_count(app_handle: AppHandle) -> i64 {
     let state = app_handle.state::<AppState>();
     state.db.count_indexed_files().unwrap()
+}
+
+#[command]
+pub async fn clear_index(state: State<'_, AppState>) -> Result<usize, AppError> {
+    state.db.clear_index().map_err(|e| AppError::unknown(e))
 }
 
 #[command]

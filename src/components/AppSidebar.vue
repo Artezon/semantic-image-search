@@ -56,6 +56,11 @@
 
     <div class="status-text">{{ indexStatusText }}</div>
 
+    <button class="btn full-width-btn" @click="clearIndex">
+      <DeleteIcon />
+      <span>{{ $t("sidebar.clear_index") }}</span>
+    </button>
+
     <div class="horizontal-divider"></div>
 
     <!-- Search Section -->
@@ -147,7 +152,7 @@ import {
   searchType,
 } from "../store";
 import type { IndexingResult, SearchResult } from "../types";
-import { FolderIcon, GenerateIcon, ImageIcon, SearchIcon, StopIcon } from "./icons";
+import { FolderIcon, GenerateIcon, ImageIcon, SearchIcon, StopIcon, DeleteIcon } from "./icons";
 import { batchSize, maxResults, threshold } from "../store";
 import { sanitizeNumberInput } from "../utils";
 
@@ -263,6 +268,15 @@ async function handleIndexingButton() {
       });
     }
   }
+}
+
+async function clearIndex() {
+  if (indexingState.value === "indexing" || indexingState.value === "preparing") {
+    indexingState.value = "stopping";
+    await invoke("stop_indexing");
+  }
+  await invoke("clear_index");
+  indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
 }
 
 async function search() {
