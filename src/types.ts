@@ -1,3 +1,9 @@
+export type Config = {
+  lang: string;
+  batch_size: number;
+  video_frames: number;
+};
+
 export type SearchResult = {
   path: string;
   filename: string;
@@ -17,17 +23,19 @@ export type AppError = {
   msg?: string;
 };
 
+export type IndexingState = "idle" | "preparing" | "indexing" | "stopping" | "fatal_error";
+
+export type IndexStatus = {
+  state: IndexingState;
+  processed: number;
+  total: number;
+  errors: number;
+};
+
 export type IndexingResult = {
   processed: number;
   total: number;
   elapsed_secs: number;
   stopped: boolean;
   errors: [string, AppError][];
-};
-
-export type IndexStatus = {
-  processed: number;
-  total: number;
-  errors: number;
-  text_key?: string;
 };

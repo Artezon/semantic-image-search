@@ -83,21 +83,19 @@ impl ModelStatusPayload {
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum IndexingStatusKey {
+pub enum IndexingState {
     #[default]
     Idle,
     Indexing,
-    Completed,
-    Stopped,
     FatalError,
 }
 
 #[derive(Clone, Serialize, Default)]
 pub struct IndexingStatusPayload {
+    pub state: IndexingState,
     pub processed: usize,
     pub total: usize,
     pub errors: usize,
-    pub text_key: IndexingStatusKey,
 }
 
 pub fn update_index_status(
@@ -105,23 +103,23 @@ pub fn update_index_status(
     processed: usize,
     total: usize,
     errors: usize,
-    text_key: IndexingStatusKey,
+    state: IndexingState,
 ) {
     let _ = app_handle
         .emit(
             "index-status",
             &IndexingStatusPayload {
+                state,
                 processed,
                 total,
                 errors,
-                text_key,
             },
         )
         .unwrap();
 }
 
 pub fn clear_index_status(app_handle: &AppHandle) {
-    update_index_status(app_handle, 0, 0, 0, IndexingStatusKey::Idle);
+    update_index_status(app_handle, 0, 0, 0, IndexingState::Idle);
 }
 
 pub fn clear_results(app_handle: &AppHandle) {

@@ -94,6 +94,7 @@ impl AppState {
 #[serde(default)]
 pub struct Config {
     pub lang: String,
+    pub batch_size: u32,
     pub video_frames: u32,
 }
 
@@ -101,6 +102,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             lang: "system".into(),
+            batch_size: 8,
             video_frames: 5,
         }
     }

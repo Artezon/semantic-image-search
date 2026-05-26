@@ -2,8 +2,8 @@
   "app.title": "Media Search",
   "app.version": "v0.2-alpha",
 
-  "sidebar.select_folder": "Select folder to index",
-  "sidebar.search_directory": "Search directory",
+  "sidebar.library": "Library",
+  "sidebar.search_directory": "Select folder to index",
   "sidebar.directory_placeholder": "Select search directory",
   "sidebar.batch_size": "Batch size:",
   "sidebar.stopping": "Stopping...",
@@ -17,7 +17,7 @@
   "sidebar.max_results": "Max results:",
   "sidebar.score_threshold": "Score threshold:",
   "sidebar.device": "Device: {device}",
-  "sidebar.indexed_count": "{count} indexed files",
+  "sidebar.indexed_count": "Total files in index: {count}",
 
   "results.title": "Search Results",
   "results.searching": "Searching...",
@@ -34,10 +34,9 @@
   "model_status.error": "Error loading model: {error}",
 
   "index_status.preparing": "Preparing...",
-  "index_status.indexing": "Processed {processed} / {total} files...",
-  "index_status.indexing_with_errors": "Processed {processed} / {total} files... ({errors} errors)",
-  "index_status.stopped": "Stopped! Processed {processed} / {total} files.",
-  "index_status.completed": "Completed! Processed {processed} / {total} files.",
+  "index_status.indexing": "Indexing... ({processed} / {total})",
+  "index_status.indexing_with_errors": "Indexing... ({processed} / {total}, {errors} errors)",
+  "index_status.stopping": "Stopping... ({processed} / {total})",
   "index_status.fatal_error": "Indexing error occurred",
 
   "message.model_not_ready.title": "Model not ready",

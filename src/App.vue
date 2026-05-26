@@ -24,11 +24,11 @@ import {
   modelStatusColor,
   deviceText,
   modelStatusParams,
+  indexingState,
   indexProgress,
   indexProcessed,
   indexTotal,
   indexErrors,
-  indexTextKey,
   indexedFilesCount,
   searchResults,
 } from "./store";
@@ -92,11 +92,11 @@ async function setupListeners() {
   });
 
   await listen<IndexStatus>("index-status", (event) => {
-    const { processed, total, errors, text_key } = event.payload;
+    const { state, processed, total, errors } = event.payload;
+    indexingState.value = state;
     indexProcessed.value = processed;
     indexTotal.value = total;
     indexErrors.value = errors;
-    indexTextKey.value = text_key;
   });
 
   await listen("clear-results", () => {

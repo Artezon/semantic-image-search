@@ -13,7 +13,7 @@
     <div class="horizontal-divider"></div>
 
     <!-- Indexing Section -->
-    <h2>{{ $t("sidebar.select_folder") }}</h2>
+    <h2>{{ $t("sidebar.library") }}</h2>
     <div class="input-group">
       <label>{{ $t("sidebar.search_directory") }}</label>
       <div class="input-row">
@@ -33,9 +33,10 @@
       <label>{{ $t("sidebar.batch_size") }}</label>
       <input
         type="number"
-        v-model.lazy.number="batchSize.value"
-        :min="batchSize.min"
-        :max="batchSize.max"
+        :value="batchSize"
+        min="1"
+        max="64"
+        @change="batchSize = sanitizeNumberInput($event, 1, 64, batchSize)"
       />
     </div>
 
@@ -44,19 +45,16 @@
       :style="progressStyle"
       @click="handleIndexingButton"
     >
-      <GenerateIcon v-if="indexingStatus === 'idle'" />
+      <GenerateIcon v-if="indexingState === 'idle'" />
       <StopIcon v-else />
-      <span v-if="indexingStatus === 'stopping'">{{ $t("sidebar.stopping") }}</span>
-      <span v-else-if="indexingStatus === 'indexing'">{{ $t("sidebar.stop_indexing") }}</span>
+      <span v-if="indexingState === 'stopping'">{{ $t("sidebar.stopping") }}</span>
+      <span v-else-if="indexingState === 'indexing' || indexingState === 'preparing'">{{
+        $t("sidebar.stop_indexing")
+      }}</span>
       <span v-else>{{ $t("sidebar.index_files") }}</span>
     </button>
 
-    <div class="status-text">
-      <template v-if="indexTextKey !== undefined">{{ indexStatusText }}</template>
-      <template v-else-if="indexedFilesCount !== null">{{
-        $t("sidebar.indexed_count", { count: indexedFilesCount })
-      }}</template>
-    </div>
+    <div class="status-text">{{ indexStatusText }}</div>
 
     <div class="horizontal-divider"></div>
 
@@ -99,9 +97,10 @@
       <label>{{ $t("sidebar.max_results") }}</label>
       <input
         type="number"
-        v-model.lazy.number="maxResults.value"
-        :min="maxResults.min"
-        :max="maxResults.max"
+        :value="maxResults"
+        min="1"
+        max="4096"
+        @change="maxResults = sanitizeNumberInput($event, 1, 4096, maxResults)"
       />
     </div>
 
@@ -109,10 +108,11 @@
       <label>{{ $t("sidebar.score_threshold") }}</label>
       <input
         type="number"
-        v-model.lazy.number="threshold.value"
-        :min="threshold.min"
-        :max="threshold.max"
-        :step="threshold.step"
+        :value="threshold"
+        min="0"
+        max="1"
+        step="0.01"
+        @change="threshold = sanitizeNumberInput($event, 0, 1, threshold)"
       />
     </div>
 
@@ -137,25 +137,21 @@ import {
   indexProcessed,
   indexTotal,
   indexErrors,
-  indexTextKey,
   indexedFilesCount,
-  indexingStatus,
+  indexingState,
   searchResults,
   isSearching,
+  indexDir,
+  queryText,
+  queryImage,
+  searchType,
 } from "../store";
 import type { IndexingResult, SearchResult } from "../types";
 import { FolderIcon, GenerateIcon, ImageIcon, SearchIcon, StopIcon } from "./icons";
-import { numericSetting } from "../utils";
+import { batchSize, maxResults, threshold } from "../store";
+import { sanitizeNumberInput } from "../utils";
 
 const { t } = useI18n();
-
-const indexDir = ref("");
-const batchSize = numericSetting(1, 64, 8);
-const queryText = ref("");
-const queryImage = ref("");
-const searchType = ref<"text" | "image">("text");
-const maxResults = numericSetting(1, 4096, 100);
-const threshold = numericSetting(0, 1, 0.05, 0.01);
 
 const modelStatusText = computed(() => {
   const key = modelStatusKey.value as string;
@@ -165,16 +161,16 @@ const modelStatusText = computed(() => {
 });
 
 const indexStatusText = computed(() => {
-  const key = indexTextKey.value;
-  if (key === "idle") return "";
-  if (key === "indexing") {
+  const state = indexingState.value;
+  if (state === "idle") return t("sidebar.indexed_count", { count: indexedFilesCount.value });
+  if (state === "indexing") {
     const processed = indexProcessed.value;
     const total = indexTotal.value;
     const errors = indexErrors.value;
     if (errors > 0) return t("index_status.indexing_with_errors", { processed, total, errors });
     return t("index_status.indexing", { processed, total });
   }
-  return t(`index_status.${key}`, {
+  return t(`index_status.${state}`, {
     processed: indexProcessed.value,
     total: indexTotal.value,
   });
@@ -185,19 +181,24 @@ const progressStyle = ref({
   "--progress-transition": "none",
 });
 
-watch(indexProgress, (next, prev) => {
-  if (indexingStatus.value !== "indexing") return;
+watch(indexProgress, (p) => {
+  if (indexingState.value === "idle") return;
   progressStyle.value = {
-    "--progress": `${next * 100}%`,
-    "--progress-transition": next > prev ? "0.1s linear" : "none",
+    "--progress": `${p * 100}%`,
+    "--progress-transition": p > 0 ? "0.1s linear" : "none",
   };
 });
 
-watch(indexingStatus, (val, oldVal) => {
+watch(indexingState, (val, oldVal) => {
   if (val === "idle" && oldVal !== "idle") {
     progressStyle.value = {
       "--progress": "100%",
       "--progress-transition": "none",
+    };
+  } else {
+    progressStyle.value = {
+      "--progress": `${indexProgress.value * 100}%`,
+      "--progress-transition": indexProgress.value > 0 ? "0.1s linear" : "none",
     };
   }
 });
@@ -221,21 +222,20 @@ async function browseImage() {
 }
 
 async function handleIndexingButton() {
-  if (indexingStatus.value === "indexing") {
-    indexingStatus.value = "stopping";
+  if (indexingState.value === "indexing" || indexingState.value === "preparing") {
+    indexingState.value = "stopping";
     await invoke("stop_indexing");
-  } else if (indexingStatus.value === "idle") {
+  } else if (indexingState.value === "idle") {
+    indexingState.value = "preparing";
     indexProcessed.value = 0;
     indexTotal.value = 0;
     indexErrors.value = 0;
-    indexTextKey.value = "preparing";
     indexProgress.value = 0;
-    indexingStatus.value = "indexing";
     const result = await invoke<IndexingResult | null>("index_directory", {
       dir: indexDir.value,
-      batchSize: batchSize.value,
     });
-    indexingStatus.value = "idle";
+    indexingState.value = "idle";
+    indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
 
     if (result) {
       const { processed, total, elapsed_secs, stopped, errors: errorsArr } = result;

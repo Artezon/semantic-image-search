@@ -1,13 +1,13 @@
-import { reactive, watch } from "vue";
 import i18n from "./i18n";
 
-export function numericSetting(min: number, max: number, def: number, step?: number) {
-  const state = reactive({ value: def, min, max, step, default: def });
-  watch(
-    () => state.value,
-    (v) => (state.value = clamp(v, min, max, def)),
-  );
-  return state;
+export function sanitizeNumberInput(event: Event, min: number, max: number, prev: number): number {
+  const input = event.target as HTMLInputElement;
+  const parsed = Number(input.value);
+  const result = input.value.trim() !== "" && !isNaN(parsed) ? clamp(parsed, min, max) : prev;
+
+  // Force the DOM value back, in case the ref didn't change
+  input.value = String(result);
+  return result;
 }
 
 // Enforce min/max on number inputs

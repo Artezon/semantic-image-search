@@ -1,5 +1,5 @@
 use crate::errors::AppError;
-use crate::frontend::IndexingStatusKey;
+use crate::frontend::IndexingState;
 use crate::{
     db::{FileEmbResult, FileType},
     frontend::{MessageKind, MessagePayload, clear_index_status, update_index_status},
@@ -40,11 +40,7 @@ struct FileList {
 }
 
 #[command]
-pub async fn index_directory(
-    app_handle: AppHandle,
-    dir: String,
-    batch_size: u32,
-) -> Option<IndexingResult> {
+pub async fn index_directory(app_handle: AppHandle, dir: String) -> Option<IndexingResult> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app_handle.state::<AppState>();
         let selected_model_manifest = state.selected_model;
@@ -90,7 +86,7 @@ pub async fn index_directory(
         let indexing_result = dir_indexing(
             &app_handle,
             &dir_path,
-            batch_size,
+            state.config.read().unwrap().batch_size,
             state.deref(),
             &selected_model_manifest,
             selected_visual_model,
@@ -100,7 +96,7 @@ pub async fn index_directory(
         );
 
         if let Err(e) = indexing_result {
-            update_index_status(&app_handle, 0, 0, 0, IndexingStatusKey::FatalError);
+            update_index_status(&app_handle, 0, 0, 0, IndexingState::FatalError);
             MessagePayload::new("indexing_error", MessageKind::Error)
                 .param("error", serde_json::json!(e))
                 .emit(&app_handle);
@@ -113,11 +109,7 @@ pub async fn index_directory(
             processed,
             total,
             errors.len(),
-            if stopped {
-                IndexingStatusKey::Stopped
-            } else {
-                IndexingStatusKey::Completed
-            },
+            IndexingState::Idle,
         );
 
         let elapsed_secs = start_time.elapsed().as_secs();
@@ -159,6 +151,10 @@ fn dir_indexing(
     let mut videos: Vec<PathBuf> = vec![];
 
     for entry in WalkDir::new(dir_path).into_iter().filter_map(|e| e.ok()) {
+        if state.indexing_stopped.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+
         let path = entry.path();
         if !path.is_file() {
             continue;
@@ -186,7 +182,7 @@ fn dir_indexing(
     }
 
     if *total == 0 {
-        update_index_status(&app_handle, 0, 0, 0, IndexingStatusKey::Completed);
+        update_index_status(&app_handle, 0, 0, 0, IndexingState::Idle);
         return Ok(());
     }
 
@@ -254,7 +250,7 @@ fn dir_indexing(
                                 *processed,
                                 *total,
                                 errors.len(),
-                                IndexingStatusKey::Indexing,
+                                IndexingState::Indexing,
                             );
                             last_progress_update = Instant::now();
                         }
@@ -268,7 +264,7 @@ fn dir_indexing(
             *processed,
             *total,
             errors.len(),
-            IndexingStatusKey::Indexing,
+            IndexingState::Indexing,
         );
 
         for chunk in needs_indexing.chunks(batch_size as usize) {
@@ -321,7 +317,7 @@ fn dir_indexing(
                     *processed,
                     *total,
                     errors.len(),
-                    IndexingStatusKey::Indexing,
+                    IndexingState::Indexing,
                 );
                 last_progress_update = Instant::now();
             }
