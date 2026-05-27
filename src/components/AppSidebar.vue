@@ -5,126 +5,128 @@
       <div class="splash">{{ $t("app.version") }}</div>
     </div>
 
-    <div class="status-text model-status">
-      {{ modelStatusText }}
+    <div class="sidebar-section">
+      <div class="status-text model-status">
+        {{ modelStatusText }}
+      </div>
+      <div class="status-text">{{ $t("sidebar.device", { device: deviceText }) }}</div>
     </div>
-    <div class="status-text">{{ $t("sidebar.device", { device: deviceText }) }}</div>
-
-    <div class="horizontal-divider"></div>
 
     <!-- Indexing Section -->
-    <h2>{{ $t("sidebar.library") }}</h2>
-    <div class="input-group">
-      <label>{{ $t("sidebar.search_directory") }}</label>
-      <div class="input-row">
-        <input
-          type="text"
-          v-model="indexDir"
-          :placeholder="$t('sidebar.directory_placeholder')"
-          readonly
-        />
-        <button class="btn icon-btn" @click="browseDirectory">
-          <FolderIcon />
-        </button>
+    <div class="sidebar-section">
+      <h2>{{ $t("sidebar.library") }}</h2>
+      <div class="input-group">
+        <label>{{ $t("sidebar.search_directory") }}</label>
+        <div class="input-row">
+          <input
+            type="text"
+            v-model="indexDir"
+            :placeholder="$t('sidebar.directory_placeholder')"
+            readonly
+          />
+          <button class="btn icon-btn" @click="browseDirectory">
+            <FolderIcon />
+          </button>
+        </div>
       </div>
+
+      <div class="param-row">
+        <label>{{ $t("sidebar.batch_size") }}</label>
+        <input
+          type="number"
+          :value="batchSize"
+          min="1"
+          max="64"
+          @change="batchSize = sanitizeNumberInput($event, 1, 64, batchSize)"
+        />
+      </div>
+
+      <button
+        class="btn full-width-btn progress-btn"
+        :style="progressStyle"
+        @click="handleIndexingButton"
+      >
+        <GenerateIcon v-if="indexingState === 'idle'" />
+        <StopIcon v-else />
+        <span v-if="indexingState === 'stopping'">{{ $t("sidebar.stopping") }}</span>
+        <span v-else-if="indexingState === 'indexing' || indexingState === 'preparing'">{{
+          $t("sidebar.stop_indexing")
+        }}</span>
+        <span v-else>{{ $t("sidebar.index_files") }}</span>
+      </button>
+
+      <div class="status-text">{{ indexStatusText }}</div>
+
+      <button class="btn full-width-btn" @click="clearIndex">
+        <DeleteIcon />
+        <span>{{ $t("sidebar.clear_index") }}</span>
+      </button>
     </div>
-
-    <div class="param-row">
-      <label>{{ $t("sidebar.batch_size") }}</label>
-      <input
-        type="number"
-        :value="batchSize"
-        min="1"
-        max="64"
-        @change="batchSize = sanitizeNumberInput($event, 1, 64, batchSize)"
-      />
-    </div>
-
-    <button
-      class="btn full-width-btn progress-btn"
-      :style="progressStyle"
-      @click="handleIndexingButton"
-    >
-      <GenerateIcon v-if="indexingState === 'idle'" />
-      <StopIcon v-else />
-      <span v-if="indexingState === 'stopping'">{{ $t("sidebar.stopping") }}</span>
-      <span v-else-if="indexingState === 'indexing' || indexingState === 'preparing'">{{
-        $t("sidebar.stop_indexing")
-      }}</span>
-      <span v-else>{{ $t("sidebar.index_files") }}</span>
-    </button>
-
-    <div class="status-text">{{ indexStatusText }}</div>
-
-    <button class="btn full-width-btn" @click="clearIndex">
-      <DeleteIcon />
-      <span>{{ $t("sidebar.clear_index") }}</span>
-    </button>
-
-    <div class="horizontal-divider"></div>
 
     <!-- Search Section -->
-    <h2>{{ $t("sidebar.search") }}</h2>
-    <div class="radio-group">
-      <label class="radio-label">
-        <input type="radio" name="search-type" value="text" v-model="searchType" />
-        {{ $t("sidebar.text_search") }}
-      </label>
-      <label class="radio-label">
-        <input type="radio" name="search-type" value="image" v-model="searchType" />
-        {{ $t("sidebar.image_search") }}
-      </label>
-    </div>
+    <div class="sidebar-section">
+      <h2>{{ $t("sidebar.search") }}</h2>
+      <div class="radio-group">
+        <label class="radio-label">
+          <input type="radio" name="search-type" value="text" v-model="searchType" />
+          {{ $t("sidebar.text_search") }}
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="search-type" value="image" v-model="searchType" />
+          {{ $t("sidebar.image_search") }}
+        </label>
+      </div>
 
-    <div v-if="searchType === 'text'" class="input-group">
-      <input
-        type="text"
-        v-model="queryText"
-        :placeholder="$t('sidebar.search_placeholder')"
-        @keyup.enter="search"
-      />
-    </div>
-    <div v-else class="input-group">
-      <div class="input-row">
+      <div v-if="searchType === 'text'" class="input-group">
         <input
           type="text"
-          v-model="queryImage"
-          :placeholder="$t('sidebar.image_placeholder')"
-          readonly
+          v-model="queryText"
+          :placeholder="$t('sidebar.search_placeholder')"
+          @keyup.enter="search"
         />
-        <button class="btn icon-btn" @click="browseImage">
-          <ImageIcon />
-        </button>
       </div>
-    </div>
+      <div v-else class="input-group">
+        <div class="input-row">
+          <input
+            type="text"
+            v-model="queryImage"
+            :placeholder="$t('sidebar.image_placeholder')"
+            readonly
+          />
+          <button class="btn icon-btn" @click="browseImage">
+            <ImageIcon />
+          </button>
+        </div>
+      </div>
 
-    <div class="param-row">
-      <label>{{ $t("sidebar.max_results") }}</label>
-      <input
-        type="number"
-        :value="maxResults"
-        min="1"
-        max="4096"
-        @change="maxResults = sanitizeNumberInput($event, 1, 4096, maxResults)"
-      />
-    </div>
+      <div class="param-row">
+        <label>{{ $t("sidebar.max_results") }}</label>
+        <input
+          type="number"
+          :value="maxResults"
+          min="1"
+          max="4096"
+          @change="maxResults = sanitizeNumberInput($event, 1, 4096, maxResults)"
+        />
+      </div>
 
-    <div class="param-row">
-      <label>{{ $t("sidebar.score_threshold") }}</label>
-      <input
-        type="number"
-        :value="threshold"
-        min="0"
-        max="1"
-        step="0.01"
-        @change="threshold = sanitizeNumberInput($event, 0, 1, threshold)"
-      />
-    </div>
+      <div class="param-row">
+        <label>{{ $t("sidebar.score_threshold") }}</label>
+        <input
+          type="number"
+          :value="threshold"
+          min="0"
+          max="1"
+          step="0.01"
+          @change="threshold = sanitizeNumberInput($event, 0, 1, threshold)"
+        />
+      </div>
 
-    <button class="btn full-width-btn" @click="search">
-      <SearchIcon />
-      <span>{{ $t("sidebar.search") }}</span>
-    </button>
+      <button class="btn full-width-btn" @click="search">
+        <SearchIcon />
+        <span>{{ $t("sidebar.search") }}</span>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -331,13 +333,22 @@ async function search() {
 .app-sidebar {
   width: 320px;
   background-color: var(--surface-container);
-  padding: 20px;
   overflow-x: hidden;
   overflow-y: auto;
+  overflow-wrap: break-word;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-section {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow-wrap: break-word;
+  padding: 20px;
+}
+
+.sidebar-section:not(:last-child) {
+  border-bottom: 1px solid var(--outline);
 }
 
 .status-text {
@@ -348,10 +359,6 @@ async function search() {
 
 .model-status {
   color: v-bind(modelStatusColor);
-}
-
-.horizontal-divider {
-  margin: 0 -20px;
 }
 
 .splash {

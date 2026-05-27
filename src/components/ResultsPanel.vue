@@ -43,7 +43,6 @@ const panelRef = ref<HTMLDivElement | null>(null);
 <style scoped>
 .results-panel {
   flex: 1;
-  padding: 20px;
   overflow-y: auto;
   height: 100%;
   display: flex;
@@ -55,6 +54,7 @@ const panelRef = ref<HTMLDivElement | null>(null);
 }
 
 .results-container {
+  padding: 20px;
   flex: 1;
 }
 
@@ -62,7 +62,6 @@ const panelRef = ref<HTMLDivElement | null>(null);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 20px;
-  margin-top: 20px;
 }
 
 .no-results {
