@@ -1,6 +1,6 @@
 {
   "app.title": "Media Search",
-  "app.version": "v0.2-alpha",
+  "app.version": "v0.3-alpha",
 
   "sidebar.library": "Library",
   "sidebar.search_directory": "Select folder to index",
