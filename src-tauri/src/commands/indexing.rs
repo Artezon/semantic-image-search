@@ -86,7 +86,6 @@ pub async fn index_directory(app_handle: AppHandle, dir: String) -> Option<Index
         let indexing_result = dir_indexing(
             &app_handle,
             &dir_path,
-            state.config.read().unwrap().batch_size,
             state.deref(),
             &selected_model_manifest,
             selected_visual_model,
@@ -132,7 +131,6 @@ pub async fn index_directory(app_handle: AppHandle, dir: String) -> Option<Index
 fn dir_indexing(
     app_handle: &AppHandle,
     dir_path: &PathBuf,
-    batch_size: u32,
     state: &AppState,
     selected_model_manifest: &ModelManifest,
     selected_visual_model: Arc<RwLock<dyn VisualSearchModel>>,
@@ -140,6 +138,9 @@ fn dir_indexing(
     processed: &mut usize,
     errors: &mut Vec<(String, AppError)>,
 ) -> Result<(), AppError> {
+    let batch_size = state.config.read().unwrap().batch_size;
+    let num_frames = state.config.read().unwrap().video_frames;
+
     let emb_type_ids = state
         .db
         .add_model_to_db(selected_model_manifest)
@@ -277,7 +278,6 @@ fn dir_indexing(
                 #[cfg(feature = "video")]
                 FileType::VID => {
                     let path = &chunk[0];
-                    let num_frames = state.config.read().unwrap().video_frames;
                     selected_visual_model
                         .write()
                         .unwrap()

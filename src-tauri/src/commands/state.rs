@@ -8,25 +8,27 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::Emitter;
-use tauri::{AppHandle, Manager, State, command};
+use tauri::{AppHandle, Manager, command};
 
 #[command]
-pub fn get_config(state: State<'_, AppState>) -> Config {
+pub async fn get_config(app_handle: AppHandle) -> Config {
+    let state = app_handle.state::<AppState>();
     state.config.read().unwrap().clone()
 }
 
-#[command]
+#[command(async)]
 pub fn get_default_config() -> Config {
     Config::default()
 }
 
 #[command]
-pub fn update_config(state: State<'_, AppState>, updates: HashMap<String, Value>) {
+pub async fn update_config(app_handle: AppHandle, updates: HashMap<String, Value>) {
+    let state = app_handle.state::<AppState>();
     state.update_config(updates);
     state.save_config();
 }
 
-#[command]
+#[command(async)]
 pub fn apply_locale(app_handle: AppHandle) {
     let state = app_handle.state::<AppState>();
     let config = state.config.read().unwrap();
@@ -34,19 +36,20 @@ pub fn apply_locale(app_handle: AppHandle) {
     let _ = app_handle.emit("update-locale", &resolved_lang);
 }
 
-#[command]
-pub async fn get_indexed_count(app_handle: AppHandle) -> i64 {
+#[command(async)]
+pub fn get_indexed_count(app_handle: AppHandle) -> i64 {
     let state = app_handle.state::<AppState>();
     state.db.count_indexed_files().unwrap()
 }
 
 #[command]
-pub async fn clear_index(state: State<'_, AppState>) -> Result<usize, AppError> {
+pub async fn clear_index(app_handle: AppHandle) -> Result<usize, AppError> {
+    let state = app_handle.state::<AppState>();
     state.db.clear_index().map_err(|e| AppError::unknown(e))
 }
 
-#[command]
-pub async fn get_model_status(app_handle: AppHandle) {
+#[command(async)]
+pub fn get_model_status(app_handle: AppHandle) {
     let state = app_handle.state::<AppState>();
     let selected_model_manifest = state.selected_model;
 

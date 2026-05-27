@@ -10,8 +10,8 @@ pub enum SearchInputType {
     Image,
 }
 
-#[command]
-pub async fn search(
+#[command(async)]
+pub fn search(
     app_handle: AppHandle,
     search_type: SearchInputType,
     query: String,
