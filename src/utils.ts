@@ -1,17 +1,7 @@
 import i18n from "./i18n";
 
-export function sanitizeNumberInput(event: Event, min: number, max: number, prev: number): number {
-  const input = event.target as HTMLInputElement;
-  const parsed = Number(input.value);
-  const result = input.value.trim() !== "" && !isNaN(parsed) ? clamp(parsed, min, max) : prev;
-
-  // Force the DOM value back, in case the ref didn't change
-  input.value = String(result);
-  return result;
-}
-
 // Enforce min/max on number inputs
-function clamp(val: number, min: number, max: number, def?: number) {
+export function clamp(val: number, min: number, max: number, def?: number) {
   if (!val && val !== 0) return def ?? val;
   return Math.min(Math.max(val, min), max);
 }

@@ -32,13 +32,7 @@
 
       <div class="param-row">
         <label>{{ $t("sidebar.batch_size") }}</label>
-        <input
-          type="number"
-          :value="batchSize"
-          min="1"
-          max="64"
-          @change="batchSize = sanitizeNumberInput($event, 1, 64, batchSize)"
-        />
+        <NumberInput v-model="batchSize" :min="1" :max="64" />
       </div>
 
       <button
@@ -101,25 +95,12 @@
 
       <div class="param-row">
         <label>{{ $t("sidebar.max_results") }}</label>
-        <input
-          type="number"
-          :value="maxResults"
-          min="1"
-          max="4096"
-          @change="maxResults = sanitizeNumberInput($event, 1, 4096, maxResults)"
-        />
+        <NumberInput v-model="maxResults" :min="1" :max="4096" />
       </div>
 
       <div class="param-row">
         <label>{{ $t("sidebar.score_threshold") }}</label>
-        <input
-          type="number"
-          :value="threshold"
-          min="0"
-          max="1"
-          step="0.01"
-          @change="threshold = sanitizeNumberInput($event, 0, 1, threshold)"
-        />
+        <NumberInput v-model="threshold" :min="0" :max="1" :step="0.01" />
       </div>
 
       <button class="btn full-width-btn" @click="search">
@@ -156,7 +137,7 @@ import {
 import type { IndexingResult, SearchResult } from "../types";
 import { FolderIcon, GenerateIcon, ImageIcon, SearchIcon, StopIcon, DeleteIcon } from "./icons";
 import { batchSize, maxResults, threshold } from "../store";
-import { sanitizeNumberInput } from "../utils";
+import NumberInput from "./NumberInput.vue";
 
 const { t } = useI18n();
 
