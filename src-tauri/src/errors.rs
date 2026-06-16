@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::fmt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(tag = "code", rename_all = "snake_case")]
@@ -61,4 +62,14 @@ impl From<tokenizers::Error> for AppError {
     fn from(e: tokenizers::Error) -> Self {
         AppError::TokenizationFailed { msg: e.to_string() }
     }
+}
+
+pub fn fatal_error(handle: &tauri::AppHandle, msg: &str, title: &str) -> ! {
+    handle
+        .dialog()
+        .message(msg)
+        .kind(MessageDialogKind::Error)
+        .title(title)
+        .blocking_show();
+    std::process::exit(1);
 }

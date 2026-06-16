@@ -1,4 +1,5 @@
 use crate::db::Database;
+use crate::errors::fatal_error;
 use crate::models;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -50,13 +51,25 @@ impl AppState {
         #[cfg(not(feature = "portable"))]
         let data_path = handle.path().app_local_data_dir().unwrap();
 
-        fs::create_dir_all(&data_path).unwrap();
+        fs::create_dir_all(&data_path).unwrap_or_else(|e| {
+            fatal_error(
+                handle,
+                &format!(
+                    "Could not create or access data directory at '{}'\n\nError: {}",
+                    data_path.display(),
+                    e
+                ),
+                "Startup Error",
+            )
+        });
 
         let db = match Database::new(&data_path.join(PATH_DB).to_string_lossy()) {
             Ok(db) => db,
-            Err(e) => {
-                panic!("Failed to load database: {}", e);
-            }
+            Err(e) => fatal_error(
+                handle,
+                &format!("Failed to load database: {}", e),
+                "Startup Error",
+            ),
         };
 
         let model_manager = models::ModelManager::new(data_path.join(PATH_MODELS_DIR));
