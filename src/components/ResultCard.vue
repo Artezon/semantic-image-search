@@ -114,6 +114,7 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   line-height: 1.5;
+  box-shadow: 0 0 7px rgba(0, 0, 0, 0.05);
 }
 
 .result-card:hover {

@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :inert="modalStack.length > 0">
     <TitleBar />
     <main class="app-container">
       <AppSidebar />
@@ -7,6 +7,18 @@
       <ResultsPanel />
     </main>
   </div>
+  <Teleport to="body">
+    <TransitionGroup name="modal" tag="div" style="display: contents">
+      <component
+        v-for="(modal, i) in modalStack"
+        :key="i"
+        :is="modal.component"
+        v-bind="modal.props"
+        :is-top="i === modalStack.length - 1"
+        @close="closeModal()"
+      />
+    </TransitionGroup>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -15,7 +27,6 @@ import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { message } from "@tauri-apps/plugin-dialog";
 import TitleBar from "./components/TitleBar.vue";
 import AppSidebar from "./components/AppSidebar.vue";
 import ResultsPanel from "./components/ResultsPanel.vue";
@@ -33,9 +44,12 @@ import {
   searchResults,
 } from "./store";
 import type { IndexStatus, ModelStatus } from "./types";
+import { useModalStack } from "./composables/useModal";
+import { showInfoModal } from "./components/modals";
 
 const { t, locale, availableLocales } = useI18n({ useScope: "global" });
 const appWindow = getCurrentWindow();
+const { modalStack, closeModal } = useModalStack();
 
 onMounted(async () => {
   // Prevent context menu on non-editable elements
@@ -75,7 +89,15 @@ async function setupListeners() {
 
     const title = t(`message.${key}.title`, params || {});
     const msg = t(`message.${key}.msg`, params || {});
-    message(msg, { title, kind });
+
+    // Currently shows the same kind of modal for all backend messages
+    const show = {
+      info: showInfoModal,
+      warning: showInfoModal,
+      error: showInfoModal,
+    }[kind];
+
+    show(msg, title);
   });
 
   await listen<ModelStatus>("model-status", (event) => {
@@ -94,6 +116,7 @@ async function setupListeners() {
   await listen<IndexStatus>("index-status", (event) => {
     const { state, processed, total, errors } = event.payload;
     indexingState.value = state;
+    if (state === "idle") indexProgress.value = 0;
     indexProcessed.value = processed;
     indexTotal.value = total;
     indexErrors.value = errors;

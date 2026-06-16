@@ -22,7 +22,6 @@ export async function updateConfig(partial: Partial<Config>) {
 
 export function bindConfig<K extends keyof Config>(key: K, value: Ref<Config[K]>) {
   watch(value, (val) => {
-    console.log("UPDATE");
     updateConfig({ [key]: val } as Partial<Config>);
   });
   return value;

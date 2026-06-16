@@ -77,7 +77,7 @@ pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage
 
     if frames.is_empty() {
         return Err(AppError::VideoReadFailed {
-            msg: "no_frames_extracted".to_string(),
+            msg: "message.index_result.errors.video_format_unsupported".to_string(),
         });
     }
 

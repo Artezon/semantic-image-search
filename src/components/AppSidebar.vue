@@ -35,18 +35,19 @@
         <NumberInput v-model="batchSize" :min="1" :max="64" />
       </div>
 
-      <button
-        class="btn full-width-btn progress-btn"
-        :style="progressStyle"
-        @click="handleIndexingButton"
-      >
-        <GenerateIcon v-if="indexingState === 'idle'" />
-        <StopIcon v-else />
-        <span v-if="indexingState === 'stopping'">{{ $t("sidebar.stopping") }}</span>
-        <span v-else-if="indexingState === 'indexing' || indexingState === 'preparing'">{{
-          $t("sidebar.stop_indexing")
-        }}</span>
-        <span v-else>{{ $t("sidebar.index_files") }}</span>
+      <button class="btn full-width-btn" @click="handleIndexingButton">
+        <RichProgressBar
+          :progress="indexingState !== 'idle' ? indexProgress : 1"
+          :animated="indexingState !== 'idle' && indexProgress > 0"
+        >
+          <GenerateIcon v-if="indexingState === 'idle'" />
+          <StopIcon v-else />
+          <span v-if="indexingState === 'stopping'">{{ $t("sidebar.stopping") }}</span>
+          <span v-else-if="indexingState === 'indexing' || indexingState === 'preparing'">{{
+            $t("sidebar.stop_indexing")
+          }}</span>
+          <span v-else>{{ $t("sidebar.index_files") }}</span>
+        </RichProgressBar>
       </button>
 
       <div class="status-text">{{ indexStatusText }}</div>
@@ -103,7 +104,7 @@
         <NumberInput v-model="threshold" :min="0" :max="1" :step="0.01" />
       </div>
 
-      <button class="btn full-width-btn" @click="search">
+      <button class="btn primary full-width-btn" @click="search">
         <SearchIcon />
         <span>{{ $t("sidebar.search") }}</span>
       </button>
@@ -112,10 +113,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
-import { open, message } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   modelStatusKey,
   modelStatusColor,
@@ -138,6 +139,9 @@ import type { IndexingResult, SearchResult } from "../types";
 import { FolderIcon, GenerateIcon, ImageIcon, SearchIcon, StopIcon, DeleteIcon } from "./icons";
 import { batchSize, maxResults, threshold } from "../store";
 import NumberInput from "./NumberInput.vue";
+import { showInfoModal } from "./modals";
+import { formatSeconds } from "../utils";
+import RichProgressBar from "./RichProgressBar.vue";
 
 const { t } = useI18n();
 
@@ -162,33 +166,6 @@ const indexStatusText = computed(() => {
     processed: indexProcessed.value,
     total: indexTotal.value,
   });
-});
-
-const progressStyle = ref({
-  "--progress": "100%",
-  "--progress-transition": "none",
-});
-
-watch(indexProgress, (p) => {
-  if (indexingState.value === "idle") return;
-  progressStyle.value = {
-    "--progress": `${p * 100}%`,
-    "--progress-transition": p > 0 ? "0.1s linear" : "none",
-  };
-});
-
-watch(indexingState, (val, oldVal) => {
-  if (val === "idle" && oldVal !== "idle") {
-    progressStyle.value = {
-      "--progress": "100%",
-      "--progress-transition": "none",
-    };
-  } else {
-    progressStyle.value = {
-      "--progress": `${indexProgress.value * 100}%`,
-      "--progress-transition": indexProgress.value > 0 ? "0.1s linear" : "none",
-    };
-  }
 });
 
 async function browseDirectory() {
@@ -226,29 +203,24 @@ async function handleIndexingButton() {
     indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
 
     if (result) {
-      const { processed, total, elapsed_secs, stopped, errors: errorsArr } = result;
+      const { processed, total, elapsed_secs, stopped, errors } = result;
       const suffix = stopped ? "stopped" : "complete";
 
-      let summary = t("message.index_result.msg", { processed, total, elapsed: elapsed_secs });
+      let summary = t("message.index_result.msg", {
+        processed,
+        total,
+        elapsed: formatSeconds(elapsed_secs),
+      });
 
-      if (errorsArr.length > 0) {
-        const maxShow = 5;
-        const shown = errorsArr.slice(0, maxShow);
-        const lines = shown.map(
+      if (errors.length > 0) {
+        const lines = errors.map(
           ([path, err]) =>
-            `${t("message.index_result.errors.skipped")} ${path}\n${err.msg ?? err.code}`,
+            `\n${t("message.index_result.errors.skipped")}: ${path}\n${t("message.index_result.errors.reason")}: ${err.msg ? t(err.msg) : err.code}`,
         );
-        summary += `\n\n${t("message.index_result.errors.header", { count: errorsArr.length })}:\n\n${lines.join("\n")}`;
-        if (errorsArr.length > maxShow) {
-          const extra = errorsArr.length - maxShow;
-          summary += `\n${t("message.index_result.errors.more", { count: extra })}`;
-        }
+        summary += `\n\n<b>${t("message.index_result.errors.header", { count: errors.length })}:</b>\n${lines.join("\n")}`;
       }
 
-      await message(summary, {
-        title: t(`message.index_result.${suffix}.title`),
-        kind: "info",
-      });
+      await showInfoModal(summary, t(`message.index_result.${suffix}.title`));
     }
   }
 }
@@ -268,16 +240,12 @@ async function search() {
   const query = (searchType.value === "text" ? queryText.value : queryImage.value).trim();
 
   if (!query) {
-    await message(t("message.empty_query.msg"), {
-      title: t("message.empty_query.title"),
-    });
+    await showInfoModal(t("message.empty_query.msg"), t("message.empty_query.title"));
     return;
   }
 
   if (maxResults.value < 1 || maxResults.value > 4096) {
-    await message(t("message.invalid_threshold.msg"), {
-      title: t("message.invalid_threshold.title"),
-    });
+    await showInfoModal(t("message.invalid_threshold.msg"), t("message.invalid_threshold.title"));
     return;
   }
 
@@ -295,16 +263,10 @@ async function search() {
     isSearching.value = false;
     const err = e as { code: string; msg?: string };
     if (err.code === "no_index") {
-      await message(t("message.no_index.msg"), {
-        title: t("message.no_index.title"),
-        kind: "error",
-      });
+      await showInfoModal(t("message.no_index.msg"), t("message.no_index.title"));
     } else {
       const errorMsg = t(`error.${err.code}`, { message: err.msg });
-      await message(errorMsg, {
-        title: t("message.search_error.title"),
-        kind: "error",
-      });
+      await showInfoModal(errorMsg, t("message.search_error.title"));
     }
   }
 }
