@@ -160,7 +160,7 @@ h2 {
 }
 
 .full-width-btn {
-  width: 100%;
+  flex-grow: 1;
 }
 
 .input-group {

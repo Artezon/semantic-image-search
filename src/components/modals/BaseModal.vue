@@ -73,7 +73,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
   overflow: hidden;
 }
 

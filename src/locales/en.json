@@ -2,6 +2,9 @@
   "app.title": "Media Search",
   "app.version": "v0.3-alpha",
 
+  "action.yes": "Yes",
+  "action.no": "No",
+
   "sidebar.library": "Library",
   "sidebar.no_directories": "No folders",
   "sidebar.add_directory": "Add folder",
@@ -19,6 +22,9 @@
   "sidebar.score_threshold": "Score threshold:",
   "sidebar.device": "Device: {device}",
   "sidebar.indexed_count": "Total files in index: {count}",
+  "sidebar.confirm_remove_folder.title": "Remove folder",
+  "sidebar.confirm_remove_folder.message": "Remove <b>{path}</b> from the library?",
+  "sidebar.confirm_remove_folder.description": "The index for this folder will be cleared. You can add it again later, but the folder will need to be re-indexed.",
 
   "results.title": "Search Results",
   "results.searching": "Searching...",
