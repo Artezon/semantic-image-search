@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 
 pub const PATH_CONFIG: &'static str = "config.json";
 pub const PATH_DB: &'static str = "index.db";
@@ -34,6 +34,7 @@ pub struct AppState {
     pub selected_model: &'static models::ModelManifest,
     pub is_indexing: AtomicBool,
     pub indexing_paused: AtomicBool,
+    pub indexing_elapsed_secs: AtomicU64,
 }
 
 impl AppState {
@@ -83,6 +84,7 @@ impl AppState {
             db,
             data_path,
             indexing_paused: AtomicBool::new(false),
+            indexing_elapsed_secs: AtomicU64::new(0),
         }
     }
 

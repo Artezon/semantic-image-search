@@ -101,6 +101,7 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
             return Err(AppError::NoIndex);
         }
 
+        let cumulative = state.indexing_elapsed_secs.load(Ordering::Relaxed);
         let start_time = Instant::now();
 
         state.is_indexing.store(true, Ordering::Relaxed);
@@ -122,13 +123,21 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
         );
 
         let was_paused = state.indexing_paused.load(Ordering::Relaxed);
-
-        let elapsed_secs = start_time.elapsed().as_secs();
+        let this_elapsed = start_time.elapsed().as_secs();
+        let elapsed_secs = cumulative + this_elapsed;
+        if was_paused {
+            state
+                .indexing_elapsed_secs
+                .store(elapsed_secs, Ordering::Relaxed);
+        } else {
+            state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
+        }
 
         state.is_indexing.store(false, Ordering::Relaxed);
         state.indexing_paused.store(false, Ordering::Relaxed);
 
         if let Err(e) = result {
+            state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
             update_index_status(&app_handle, 0, 0, 0, IndexingState::FatalError);
             return Err(e);
         }
