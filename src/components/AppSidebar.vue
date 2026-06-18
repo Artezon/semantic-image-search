@@ -16,27 +16,7 @@
     <div class="sidebar-section">
       <h2>{{ $t("sidebar.library") }}</h2>
 
-      <div class="dir-list">
-        <div v-for="(dir, i) in indexedDirs" :key="dir" class="dir-row">
-          <button class="btn icon-btn" :disabled="i === 0" @click="moveDirUp(i)">
-            <UpIcon />
-          </button>
-          <button
-            class="btn icon-btn"
-            :disabled="i === indexedDirs.length - 1"
-            @click="moveDirDown(i)"
-          >
-            <DownIcon />
-          </button>
-          <span class="dir-path" :title="dir">{{ dir }}</span>
-          <button class="btn icon-btn" @click="removeDirectory(dir)">
-            <CloseIcon />
-          </button>
-        </div>
-        <div v-if="indexedDirs.length === 0" class="status-text">
-          {{ $t("sidebar.no_directories") }}
-        </div>
-      </div>
+      <DirectoryList />
 
       <button class="btn full-width-btn" @click="addDirectory">
         <AddFolderIcon />
@@ -123,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -146,22 +126,13 @@ import {
   searchType,
 } from "../store";
 import type { AppError, IndexingResult, SearchResult } from "../types";
-import {
-  AddFolderIcon,
-  ImageIcon,
-  SearchIcon,
-  RefreshIcon,
-  PauseIcon,
-  PlayIcon,
-  CloseIcon,
-  UpIcon,
-  DownIcon,
-} from "./icons";
+import { ImageIcon, SearchIcon, RefreshIcon, PauseIcon, PlayIcon, AddFolderIcon } from "./icons";
 import { batchSize, maxResults, threshold } from "../store";
 import NumberInput from "./NumberInput.vue";
 import { showInfoModal } from "./modals";
 import { formatSeconds } from "../utils";
 import RichProgressBar from "./RichProgressBar.vue";
+import DirectoryList from "./DirectoryList.vue";
 
 const { t } = useI18n();
 
@@ -188,10 +159,6 @@ const indexStatusText = computed(() => {
   });
 });
 
-async function loadDirs() {
-  indexedDirs.value = await invoke("get_dirs");
-}
-
 async function addDirectory() {
   const path = await open({ directory: true });
   if (typeof path !== "string") return;
@@ -214,30 +181,6 @@ async function addDirectory() {
       t("message.invalid_directory.title"),
     );
   }
-}
-
-async function removeDirectory(path: string) {
-  if (indexingState.value === "indexing" || indexingState.value === "preparing") {
-    indexingState.value = "pausing";
-    await invoke("pause_indexing");
-  }
-  await invoke("remove_directory", { path });
-  indexedDirs.value = await invoke("get_dirs");
-  indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
-}
-
-async function moveDirUp(index: number) {
-  if (index === 0) return;
-  const dirs = indexedDirs.value;
-  [dirs[index - 1], dirs[index]] = [dirs[index], dirs[index - 1]];
-  await invoke("reorder_directories", { paths: dirs });
-}
-
-async function moveDirDown(index: number) {
-  if (index === indexedDirs.value.length - 1) return;
-  const dirs = indexedDirs.value;
-  [dirs[index], dirs[index + 1]] = [dirs[index + 1], dirs[index]];
-  await invoke("reorder_directories", { paths: dirs });
 }
 
 async function browseImage() {
@@ -341,8 +284,6 @@ async function search() {
     await showInfoModal(errorMsg, t("message.search_error.title"));
   }
 }
-
-onMounted(loadDirs);
 </script>
 
 <style scoped>
@@ -398,47 +339,5 @@ onMounted(loadDirs);
     2px -2px 5px rgba(0, 0, 0, 0.3),
     -2px 2px 5px rgba(0, 0, 0, 0.3),
     2px 2px 5px rgba(0, 0, 0, 0.3);
-}
-
-.dir-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 150px;
-  overflow-y: auto;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  padding: 4px;
-}
-
-.dir-list > .status-text {
-  margin: 6px;
-}
-
-.dir-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border-radius: 4px;
-}
-
-.dir-path {
-  flex: 1;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dir-row .icon-btn {
-  padding: 2px;
-  min-width: 20px;
-  min-height: 20px;
-}
-
-.dir-row .icon-btn svg {
-  width: 12px;
-  height: 12px;
 }
 </style>

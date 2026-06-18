@@ -2,9 +2,9 @@
   <div class="modal-overlay" :inert="!isTop" @click.self="onOverlayClick">
     <div class="modal" :style="modalStyle">
       <h3 data-tauri-drag-region v-if="title" class="modal-title">{{ title }}</h3>
-      <div class="modal-body" ref="bodyRef" :style="maskStyle" @scroll="updateScroll">
+      <ScrollFadeContainer class="modal-body">
         <slot />
-      </div>
+      </ScrollFadeContainer>
       <div v-if="$slots.footer" class="modal-footer">
         <slot name="footer" />
       </div>
@@ -13,7 +13,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, nextTick, ref, type StyleValue } from "vue";
+import { computed, onMounted, onUnmounted, type StyleValue } from "vue";
+import ScrollFadeContainer from "../ScrollFadeContainer.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -31,10 +32,6 @@ const modalStyle = computed<StyleValue>(() => ({
   ...(props.width ? { width: props.width } : {}),
 }));
 
-const bodyRef = ref<HTMLElement>();
-const canScrollUp = ref(false);
-const canScrollDown = ref(false);
-
 function onOverlayClick() {
   if (props.dismissible) emit("close");
 }
@@ -43,32 +40,9 @@ function onKeyDown(e: KeyboardEvent) {
   if (e.key === "Escape" && props.isTop && props.dismissible) emit("close");
 }
 
-function updateScroll() {
-  if (!bodyRef.value) return;
-  const { scrollTop, scrollHeight, clientHeight } = bodyRef.value;
-  canScrollUp.value = scrollTop > 0;
-  canScrollDown.value = scrollTop + clientHeight < scrollHeight - 1;
-}
-
-const maskStyle = computed<StyleValue>(() => {
-  const top = canScrollUp.value ? 30 : 0;
-  const bottom = canScrollDown.value ? 30 : 0;
-
-  return {
-    maskImage: `linear-gradient(
-      to bottom,
-      transparent,
-      black ${top}px,
-      black calc(100% - ${bottom}px),
-      transparent
-    )`,
-  };
-});
-
 onMounted(() => {
   document.querySelector<HTMLElement>("[autofocus]")?.focus();
   window.addEventListener("keydown", onKeyDown);
-  nextTick(updateScroll);
 });
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeyDown);
