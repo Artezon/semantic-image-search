@@ -23,7 +23,13 @@ export type AppError = {
   msg?: string;
 };
 
-export type IndexingState = "idle" | "preparing" | "indexing" | "stopping" | "fatal_error";
+export type IndexingState =
+  | "idle"
+  | "preparing"
+  | "indexing"
+  | "pausing"
+  | "paused"
+  | "fatal_error";
 
 export type IndexStatus = {
   state: IndexingState;
@@ -36,6 +42,6 @@ export type IndexingResult = {
   processed: number;
   total: number;
   elapsed_secs: number;
-  stopped: boolean;
+  was_paused: boolean;
   errors: [string, AppError][];
 };

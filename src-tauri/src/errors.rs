@@ -7,7 +7,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 pub enum AppError {
     ModelNotReady,
     InvalidImagePath,
+    InvalidDirectory,
     NoIndex,
+    AlreadyIndexing,
     VideoReadFailed {
         msg: String,
     },

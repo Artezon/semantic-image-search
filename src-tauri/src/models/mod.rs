@@ -8,8 +8,7 @@ use crate::errors::AppError;
 use ndarray::Array1;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 type EmbedResult = Result<Array1<f32>, AppError>;
 type FileEmbedResult = (PathBuf, EmbedResult);
@@ -17,14 +16,14 @@ type FilesEmbedResult = Result<Vec<FileEmbedResult>, AppError>;
 
 #[derive(Hash, Eq, PartialEq)]
 pub enum EmbeddingKind {
-    Text,
+    // Text,
     Vision,
 }
 
 impl EmbeddingKind {
     pub fn as_str(&self) -> &str {
         match self {
-            Self::Text => "text",
+            // Self::Text => "text",
             Self::Vision => "vision",
         }
     }
@@ -54,16 +53,7 @@ impl ModelManager {
 
         // TODO: Add other model types (DocumentSearchModel and AudioSearchModel)
 
-        // let mut all_models: HashMap<&'static ModelManifest, Arc<RwLock<dyn Model>>> =
-        //     HashMap::new();
-        // for (&manifest, arc) in &visual_search_models {
-        //     all_models
-        //         .entry(manifest)
-        //         .or_insert_with(|| arc.clone() as Arc<RwLock<dyn Model>>);
-        // }
-
         Self {
-            // all_models,
             visual_search_models,
         }
     }
@@ -79,7 +69,7 @@ pub trait Model: Send + Sync {
 
 pub trait TextEncoder: Model {
     fn load_text_encoder(&mut self) -> Result<(), AppError>;
-    fn unload_text_encoder(&mut self);
+    // fn unload_text_encoder(&mut self);
     fn is_text_encoder_loaded(&self) -> bool;
 
     fn embed_text(&mut self, text: &str) -> EmbedResult;
@@ -87,7 +77,7 @@ pub trait TextEncoder: Model {
 
 pub trait VisualEncoder: Model {
     fn load_vision_encoder(&mut self) -> Result<(), AppError>;
-    fn unload_vision_encoder(&mut self);
+    // fn unload_vision_encoder(&mut self);
     fn is_vision_encoder_loaded(&self) -> bool;
 
     fn embed_images(&mut self, paths: &[PathBuf]) -> FilesEmbedResult;

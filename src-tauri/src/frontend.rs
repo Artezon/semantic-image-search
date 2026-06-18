@@ -122,6 +122,6 @@ pub fn clear_index_status(app_handle: &AppHandle) {
     update_index_status(app_handle, 0, 0, 0, IndexingState::Idle);
 }
 
-pub fn clear_results(app_handle: &AppHandle) {
-    let _ = app_handle.emit("clear-results", ()).unwrap();
-}
+// pub fn clear_results(app_handle: &AppHandle) {
+//     let _ = app_handle.emit("clear-results", ()).unwrap();
+// }

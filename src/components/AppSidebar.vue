@@ -15,20 +15,33 @@
     <!-- Indexing Section -->
     <div class="sidebar-section">
       <h2>{{ $t("sidebar.library") }}</h2>
-      <div class="input-group">
-        <label>{{ $t("sidebar.search_directory") }}</label>
-        <div class="input-row">
-          <input
-            type="text"
-            v-model="indexDir"
-            :placeholder="$t('sidebar.directory_placeholder')"
-            readonly
-          />
-          <button class="btn icon-btn" @click="browseDirectory">
-            <FolderIcon />
+
+      <div class="dir-list">
+        <div v-for="(dir, i) in indexedDirs" :key="dir" class="dir-row">
+          <button class="btn icon-btn" :disabled="i === 0" @click="moveDirUp(i)">
+            <UpIcon />
+          </button>
+          <button
+            class="btn icon-btn"
+            :disabled="i === indexedDirs.length - 1"
+            @click="moveDirDown(i)"
+          >
+            <DownIcon />
+          </button>
+          <span class="dir-path" :title="dir">{{ dir }}</span>
+          <button class="btn icon-btn" @click="removeDirectory(dir)">
+            <CloseIcon />
           </button>
         </div>
+        <div v-if="indexedDirs.length === 0" class="status-text">
+          {{ $t("sidebar.no_directories") }}
+        </div>
       </div>
+
+      <button class="btn full-width-btn" @click="addDirectory">
+        <AddFolderIcon />
+        <span>{{ $t("sidebar.add_directory") }}</span>
+      </button>
 
       <div class="param-row">
         <label>{{ $t("sidebar.batch_size") }}</label>
@@ -40,22 +53,19 @@
           :progress="indexingState !== 'idle' ? indexProgress : 1"
           :animated="indexingState !== 'idle' && indexProgress > 0"
         >
-          <GenerateIcon v-if="indexingState === 'idle'" />
-          <StopIcon v-else />
-          <span v-if="indexingState === 'stopping'">{{ $t("sidebar.stopping") }}</span>
+          <RefreshIcon v-if="indexingState === 'idle'" />
+          <PlayIcon v-else-if="indexingState === 'paused'" />
+          <PauseIcon v-else />
+          <span v-if="indexingState === 'pausing'">{{ $t("sidebar.pausing") }}</span>
           <span v-else-if="indexingState === 'indexing' || indexingState === 'preparing'">{{
-            $t("sidebar.stop_indexing")
+            $t("sidebar.pause_indexing")
           }}</span>
-          <span v-else>{{ $t("sidebar.index_files") }}</span>
+          <span v-else-if="indexingState === 'paused'">{{ $t("sidebar.resume_indexing") }}</span>
+          <span v-else>{{ $t("sidebar.rescan_directories") }}</span>
         </RichProgressBar>
       </button>
 
       <div class="status-text">{{ indexStatusText }}</div>
-
-      <button class="btn full-width-btn" @click="clearIndex">
-        <DeleteIcon />
-        <span>{{ $t("sidebar.clear_index") }}</span>
-      </button>
     </div>
 
     <!-- Search Section -->
@@ -113,7 +123,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -128,15 +138,25 @@ import {
   indexErrors,
   indexedFilesCount,
   indexingState,
+  indexedDirs,
   searchResults,
   isSearching,
-  indexDir,
   queryText,
   queryImage,
   searchType,
 } from "../store";
-import type { IndexingResult, SearchResult } from "../types";
-import { FolderIcon, GenerateIcon, ImageIcon, SearchIcon, StopIcon, DeleteIcon } from "./icons";
+import type { AppError, IndexingResult, SearchResult } from "../types";
+import {
+  AddFolderIcon,
+  ImageIcon,
+  SearchIcon,
+  RefreshIcon,
+  PauseIcon,
+  PlayIcon,
+  CloseIcon,
+  UpIcon,
+  DownIcon,
+} from "./icons";
 import { batchSize, maxResults, threshold } from "../store";
 import NumberInput from "./NumberInput.vue";
 import { showInfoModal } from "./modals";
@@ -168,9 +188,56 @@ const indexStatusText = computed(() => {
   });
 });
 
-async function browseDirectory() {
+async function loadDirs() {
+  indexedDirs.value = await invoke("get_dirs");
+}
+
+async function addDirectory() {
   const path = await open({ directory: true });
-  if (typeof path === "string") indexDir.value = path;
+  if (typeof path !== "string") return;
+
+  if (indexedDirs.value.includes(path)) {
+    await showInfoModal(
+      t("message.directory_already_added.msg"),
+      t("message.directory_already_added.title"),
+    );
+    return;
+  }
+
+  try {
+    await invoke("add_directory", { path });
+    indexedDirs.value = await invoke("get_dirs");
+  } catch (e) {
+    const err = e as AppError;
+    await showInfoModal(
+      t(`error.${err.code}`, { message: err.msg }),
+      t("message.invalid_directory.title"),
+    );
+  }
+}
+
+async function removeDirectory(path: string) {
+  if (indexingState.value === "indexing" || indexingState.value === "preparing") {
+    indexingState.value = "pausing";
+    await invoke("pause_indexing");
+  }
+  await invoke("remove_directory", { path });
+  indexedDirs.value = await invoke("get_dirs");
+  indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
+}
+
+async function moveDirUp(index: number) {
+  if (index === 0) return;
+  const dirs = indexedDirs.value;
+  [dirs[index - 1], dirs[index]] = [dirs[index], dirs[index - 1]];
+  await invoke("reorder_directories", { paths: dirs });
+}
+
+async function moveDirDown(index: number) {
+  if (index === indexedDirs.value.length - 1) return;
+  const dirs = indexedDirs.value;
+  [dirs[index], dirs[index + 1]] = [dirs[index + 1], dirs[index]];
+  await invoke("reorder_directories", { paths: dirs });
 }
 
 async function browseImage() {
@@ -188,23 +255,30 @@ async function browseImage() {
 
 async function handleIndexingButton() {
   if (indexingState.value === "indexing" || indexingState.value === "preparing") {
-    indexingState.value = "stopping";
-    await invoke("stop_indexing");
-  } else if (indexingState.value === "idle") {
+    indexingState.value = "pausing";
+    await invoke("pause_indexing");
+  } else if (indexingState.value === "idle" || indexingState.value === "paused") {
+    const resuming = indexingState.value === "paused";
     indexingState.value = "preparing";
-    indexProcessed.value = 0;
-    indexTotal.value = 0;
-    indexErrors.value = 0;
-    indexProgress.value = 0;
-    const result = await invoke<IndexingResult | null>("index_directory", {
-      dir: indexDir.value,
-    });
-    indexingState.value = "idle";
-    indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
+    if (!resuming) {
+      indexProcessed.value = 0;
+      indexTotal.value = 0;
+      indexErrors.value = 0;
+      indexProgress.value = 0;
+    }
 
-    if (result) {
-      const { processed, total, elapsed_secs, stopped, errors } = result;
-      const suffix = stopped ? "stopped" : "complete";
+    try {
+      const result = await invoke<IndexingResult>("index_directories");
+      indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
+
+      const { processed, total, elapsed_secs, was_paused, errors } = result;
+
+      if (was_paused) {
+        indexingState.value = "paused";
+        return;
+      }
+
+      indexingState.value = "idle";
 
       let summary = t("message.index_result.msg", {
         processed,
@@ -220,18 +294,14 @@ async function handleIndexingButton() {
         summary += `\n\n<b>${t("message.index_result.errors.header", { count: errors.length })}:</b>\n${lines.join("\n")}`;
       }
 
-      await showInfoModal(summary, t(`message.index_result.${suffix}.title`));
+      await showInfoModal(summary, t("message.index_result.complete.title"));
+    } catch (e) {
+      indexingState.value = "idle";
+      const err = e as AppError;
+      const errorMsg = t(`error.${err.code}`, { message: err.msg });
+      await showInfoModal(errorMsg, t("message.indexing_error.title"));
     }
   }
-}
-
-async function clearIndex() {
-  if (indexingState.value === "indexing" || indexingState.value === "preparing") {
-    indexingState.value = "stopping";
-    await invoke("stop_indexing");
-  }
-  await invoke("clear_index");
-  indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
 }
 
 async function search() {
@@ -249,6 +319,11 @@ async function search() {
     return;
   }
 
+  if (indexedDirs.value.length == 0) {
+    await showInfoModal(t("message.no_index.msg"), t("message.no_index.title"));
+    return;
+  }
+
   try {
     isSearching.value = true;
     const results = await invoke<Array<SearchResult>>("search", {
@@ -261,15 +336,13 @@ async function search() {
     isSearching.value = false;
   } catch (e) {
     isSearching.value = false;
-    const err = e as { code: string; msg?: string };
-    if (err.code === "no_index") {
-      await showInfoModal(t("message.no_index.msg"), t("message.no_index.title"));
-    } else {
-      const errorMsg = t(`error.${err.code}`, { message: err.msg });
-      await showInfoModal(errorMsg, t("message.search_error.title"));
-    }
+    const err = e as AppError;
+    const errorMsg = t(`error.${err.code}`, { message: err.msg });
+    await showInfoModal(errorMsg, t("message.search_error.title"));
   }
 }
+
+onMounted(loadDirs);
 </script>
 
 <style scoped>
@@ -325,5 +398,47 @@ async function search() {
     2px -2px 5px rgba(0, 0, 0, 0.3),
     -2px 2px 5px rgba(0, 0, 0, 0.3),
     2px 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.dir-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.dir-list > .status-text {
+  margin: 6px;
+}
+
+.dir-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.dir-path {
+  flex: 1;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dir-row .icon-btn {
+  padding: 2px;
+  min-width: 20px;
+  min-height: 20px;
+}
+
+.dir-row .icon-btn svg {
+  width: 12px;
+  height: 12px;
 }
 </style>

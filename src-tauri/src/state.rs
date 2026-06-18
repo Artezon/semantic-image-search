@@ -33,7 +33,7 @@ pub struct AppState {
     pub model_manager: models::ModelManager,
     pub selected_model: &'static models::ModelManifest,
     pub is_indexing: AtomicBool,
-    pub indexing_stopped: AtomicBool,
+    pub indexing_paused: AtomicBool,
 }
 
 impl AppState {
@@ -82,7 +82,7 @@ impl AppState {
             is_indexing: AtomicBool::new(false),
             db,
             data_path,
-            indexing_stopped: AtomicBool::new(false),
+            indexing_paused: AtomicBool::new(false),
         }
     }
 

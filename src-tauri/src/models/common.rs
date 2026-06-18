@@ -100,6 +100,6 @@ pub fn clip_prepare_image(
     mean: [f32; 3],
     std: [f32; 3],
 ) -> Result<Vec<f32>, AppError> {
-    let img = open_image_as_rgb(path).map_err(|e| AppError::unknown(e))?;
+    let img = open_image_as_rgb(path).map_err(AppError::unknown)?;
     Ok(clip_prepare_rgb(&img, w, h, mean, std))
 }

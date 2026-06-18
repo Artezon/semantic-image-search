@@ -6,9 +6,9 @@ use crate::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::Emitter;
-use tauri::{AppHandle, Manager, command};
+use tauri::{AppHandle, Emitter, Manager, State, command};
 
 #[command]
 pub async fn get_config(app_handle: AppHandle) -> Config {
@@ -43,9 +43,33 @@ pub fn get_indexed_count(app_handle: AppHandle) -> i64 {
 }
 
 #[command]
-pub async fn clear_index(app_handle: AppHandle) -> Result<usize, AppError> {
-    let state = app_handle.state::<AppState>();
-    state.db.clear_index().map_err(|e| AppError::unknown(e))
+pub async fn get_dirs(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
+    state.db.get_dirs().map_err(AppError::unknown)
+}
+
+#[command]
+pub async fn add_directory(state: State<'_, AppState>, path: String) -> Result<(), AppError> {
+    let dir_path = PathBuf::from(&path);
+    if !dir_path.is_dir() {
+        return Err(AppError::InvalidDirectory);
+    }
+    state.db.add_directory(&path).map_err(AppError::unknown)
+}
+
+#[command]
+pub async fn remove_directory(state: State<'_, AppState>, path: String) -> Result<(), AppError> {
+    state.db.remove_directory(&path).map_err(AppError::unknown)
+}
+
+#[command]
+pub async fn reorder_directories(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<(), AppError> {
+    state
+        .db
+        .reorder_directories(&paths)
+        .map_err(AppError::unknown)
 }
 
 #[command(async)]

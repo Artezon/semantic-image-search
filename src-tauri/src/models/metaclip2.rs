@@ -93,11 +93,11 @@ impl TextEncoder for MetaCLIP2B16_384Model {
         Ok(())
     }
 
-    fn unload_text_encoder(&mut self) {
-        self.text_session = None;
-        self.tokenizer = None;
-        self.text_session_device = String::new();
-    }
+    // fn unload_text_encoder(&mut self) {
+    //     self.text_session = None;
+    //     self.tokenizer = None;
+    //     self.text_session_device = String::new();
+    // }
 
     fn is_text_encoder_loaded(&self) -> bool {
         self.text_session.is_some() && self.tokenizer.is_some()
@@ -151,10 +151,10 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
         Ok(())
     }
 
-    fn unload_vision_encoder(&mut self) {
-        self.vision_session = None;
-        self.vision_session_device = String::new();
-    }
+    // fn unload_vision_encoder(&mut self) {
+    //     self.vision_session = None;
+    //     self.vision_session_device = String::new();
+    // }
 
     fn is_vision_encoder_loaded(&self) -> bool {
         self.vision_session.is_some()
@@ -173,8 +173,8 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
             .map(|path| clip_prepare_image(path, w, h, MEAN, STD))
             .collect();
 
-        let mut batch = Vec::new();
-        let mut errors: Vec<Option<AppError>> = Vec::new();
+        let mut batch = vec![];
+        let mut errors: Vec<Option<AppError>> = vec![];
         for res in imgs {
             match res {
                 Ok(vec) => {
@@ -206,7 +206,7 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
 
         let mut path_iter = paths.iter();
         let mut embed_iter = embed_2d.outer_iter();
-        let mut result: Vec<FileEmbedResult> = Vec::new();
+        let mut result: Vec<FileEmbedResult> = vec![];
         for err in errors {
             let path = path_iter.next().unwrap();
             match err {

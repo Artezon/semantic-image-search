@@ -23,11 +23,14 @@ pub fn search(
     let selected_visual_model =
         Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
     let selected_kind = EmbeddingKind::Vision; // Currently only vision (CLIP) model supported
-    let emb_type_id = state
+    let Some(emb_type_id) = state
         .db
-        .get_emb_type_id(selected_model_manifest, &selected_kind)
-        .map_err(|e| AppError::unknown(e))?
-        .ok_or(AppError::NoIndex)?;
+        .get_emb_type_id(&selected_model_manifest, &selected_kind)
+        .ok()
+        .flatten()
+    else {
+        return Ok(vec![]);
+    };
 
     let query_embedding = match search_type {
         SearchInputType::Text => {
@@ -70,5 +73,5 @@ pub fn search(
     state
         .db
         .search_embeddings(query_embedding, emb_type_id, max_results, threshold)
-        .map_err(|e| AppError::unknown(e))
+        .map_err(AppError::unknown)
 }

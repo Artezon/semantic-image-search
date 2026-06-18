@@ -50,7 +50,7 @@ export const indexedFilesCount = ref<number | null>(null);
 export const indexingState = ref<IndexingState>("idle");
 
 // UI state
-export const indexDir = ref("");
+export const indexedDirs = ref<string[]>([]);
 export const batchSize = ref(0);
 export const queryText = ref("");
 export const queryImage = ref("");

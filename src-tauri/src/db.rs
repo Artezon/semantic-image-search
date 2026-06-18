@@ -6,8 +6,7 @@ use rusqlite::{Connection, OptionalExtension, ffi::sqlite3_auto_extension, param
 use rusqlite_migration::Migrations;
 use sqlite_vec::sqlite3_vec_init;
 use std::{
-    collections::HashMap,
-    fs,
+    collections::HashSet,
     path::{Path, PathBuf, absolute},
     sync::Mutex,
 };
@@ -32,18 +31,38 @@ impl FileType {
     }
 }
 
-pub struct FileEmbResult {
-    pub file_id: i64,
-    pub embeddings: Vec<EmbMetadata>,
+pub struct FileWithEmbStatus {
+    pub id: i64,
+    pub path: PathBuf,
+    pub file_type: String,
+    pub last_file_mtime: Option<i64>,
+    pub last_file_size: Option<i64>,
 }
 
-pub struct EmbMetadata {
-    pub id: i64,
+// pub struct FileMetadata {
+//     file_id: i64,
+//     key_value: HashMap<String, String>,
+// }
+
+pub struct FileEmbedding {
     pub file_id: i64,
-    pub emb_type_id: u32,
-    pub last_file_mtime: i64,
-    pub last_file_size: i64,
+    pub file_mtime: i64,
+    pub file_size: i64,
+    pub embedding: Vec<f32>,
 }
+
+// pub struct FileEmbResult {
+//     pub file_id: i64,
+//     pub embeddings: Vec<EmbMetadata>,
+// }
+
+// pub struct EmbMetadata {
+//     pub id: i64,
+//     pub file_id: i64,
+//     pub emb_type_id: u32,
+//     pub last_file_mtime: i64,
+//     pub last_file_size: i64,
+// }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -93,12 +112,141 @@ impl Database {
         f(conn)
     }
 
+    pub fn count_indexed_files(&self) -> Result<i64> {
+        self.with_conn(|conn| {
+            conn.query_row(
+                "SELECT COUNT(DISTINCT file_id) FROM emb_metadata",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+        })
+    }
+
+    pub fn get_dirs(&self) -> Result<Vec<String>> {
+        self.with_conn(|conn| {
+            let mut stmt =
+                conn.prepare("SELECT path FROM indexed_directory ORDER BY sort_order ASC")?;
+            let paths = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+            Ok(paths)
+        })
+    }
+
+    pub fn add_directory(&self, dir_path: &str) -> Result<()> {
+        self.with_conn(|conn| {
+            let max_order: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(sort_order), -1) FROM indexed_directory",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(-1);
+            conn.execute(
+                "INSERT OR IGNORE INTO indexed_directory (path, sort_order) VALUES (?1, ?2)",
+                params![dir_path, max_order + 1],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn update_directory(&self, dir_path: &str, files: Vec<(PathBuf, FileType)>) -> Result<()> {
+        let files: Vec<(String, FileType)> = files
+            .into_iter()
+            .map(|(p, t)| Ok((absolute(&p)?.display().to_string(), t)))
+            .collect::<Result<_>>()?;
+
+        self.with_conn(|conn| {
+            let tx = conn.transaction()?;
+
+            let dir_id: i64 = tx.query_row(
+                "SELECT id FROM indexed_directory WHERE path = ?1",
+                params![dir_path],
+                |row| row.get(0),
+            )?;
+
+            // Load files existing in database
+            let existing: Vec<(i64, String)> = {
+                let mut stmt = tx.prepare(indoc! {"
+                    SELECT f.id, f.path FROM file f
+                    JOIN directory_files df ON df.file_id = f.id
+                    WHERE df.directory_id = ?1
+                "})?;
+                stmt.query_map(params![dir_id], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<rusqlite::Result<_>>()?
+            };
+
+            let new_paths: HashSet<&str> = files.iter().map(|(p, _)| p.as_str()).collect();
+
+            // Remove files no longer on disk from database
+            let to_remove: Vec<i64> = existing
+                .iter()
+                .filter(|(_, p)| !new_paths.contains(p.as_str()))
+                .map(|(id, _)| *id)
+                .collect();
+            for file_id in to_remove {
+                tx.execute(
+                    "DELETE FROM directory_files WHERE directory_id = ?1 AND file_id = ?2",
+                    params![dir_id, file_id],
+                )?;
+            }
+
+            // Upsert files to database
+            for (path_str, file_type) in &files {
+                let file_id: i64 = tx.query_row(
+                    indoc! {"
+                        INSERT INTO file (path, type) VALUES (?1, ?2)
+                        ON CONFLICT(path) DO UPDATE SET type = excluded.type
+                        RETURNING id
+                    "},
+                    params![path_str, file_type.as_str()],
+                    |row| row.get(0),
+                )?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO directory_files (directory_id, file_id) VALUES (?1, ?2)",
+                    params![dir_id, file_id],
+                )?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    pub fn remove_directory(&self, path: &str) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "DELETE FROM indexed_directory WHERE path = ?1",
+                params![path],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn reorder_directories(&self, paths: &[String]) -> Result<()> {
+        self.with_conn(|conn| {
+            let tx = conn.transaction()?;
+            for (i, p) in paths.iter().enumerate() {
+                tx.execute(
+                    "UPDATE indexed_directory SET sort_order = ?1 WHERE path = ?2",
+                    params![i as i64, p],
+                )?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
     pub fn add_model_to_db(&self, model_manifest: &ModelManifest) -> Result<Vec<u32>> {
         let name = model_manifest.name;
         let dim = model_manifest.dim;
-        let mut ids = Vec::new();
+        let mut ids = vec![];
 
-        self.with_conn(|conn: &mut Connection| {
+        self.with_conn(|conn| {
             let tx = conn.transaction()?;
 
             for kind in model_manifest.capabilities {
@@ -165,129 +313,93 @@ impl Database {
         })
     }
 
-    pub fn get_emb_by_file_path(
+    // pub fn get_emb_by_file_path(
+    //     &self,
+    //     path: &Path,
+    //     emb_type_id: Option<u32>,
+    // ) -> Result<Option<FileEmbResult>> {
+    //     self.with_conn(|conn| {
+    //         let path_string = path.to_string_lossy();
+
+    //         let sql = if emb_type_id.is_none() {
+    //             indoc! {"
+    //                 SELECT f.id, em.id, em.emb_type_id, em.last_file_mtime, em.last_file_size
+    //                 FROM file f
+    //                 LEFT JOIN emb_metadata em
+    //                     ON em.file_id = f.id
+    //                 WHERE f.path = ?1
+    //             "}
+    //         } else {
+    //             indoc! {"
+    //                 SELECT f.id, em.id, em.emb_type_id, em.last_file_mtime, em.last_file_size
+    //                 FROM file f
+    //                 LEFT JOIN emb_metadata em
+    //                     ON em.file_id = f.id
+    //                     AND em.emb_type_id = ?2
+    //                 WHERE f.path = ?1
+    //             "}
+    //         };
+
+    //         let mut stmt = conn.prepare(sql)?;
+    //         let mut rows = if emb_type_id.is_none() {
+    //             stmt.query(params![&path_string])?
+    //         } else {
+    //             stmt.query(params![&path_string, emb_type_id.unwrap()])?
+    //         };
+
+    //         let mut file_id: Option<i64> = None;
+    //         let mut embeddings: Vec<EmbMetadata> = vec![];
+
+    //         while let Some(row) = rows.next()? {
+    //             file_id = row.get(0).ok();
+
+    //             if let Some(emb_id) = row.get::<_, Option<i64>>(1)? {
+    //                 embeddings.push(EmbMetadata {
+    //                     id: emb_id,
+    //                     file_id: file_id.unwrap(),
+    //                     emb_type_id: row.get(2)?,
+    //                     last_file_mtime: row.get(3)?,
+    //                     last_file_size: row.get(4)?,
+    //                 });
+    //             }
+    //         }
+
+    //         Ok(file_id.map(|file_id| FileEmbResult {
+    //             file_id,
+    //             embeddings,
+    //         }))
+    //     })
+    // }
+
+    // pub fn insert_metadata(&self, files_metadata: Vec<FileMetadata>) -> Result<()> {
+    //     self.with_conn(|conn| {
+    //         for file_meta in files_metadata {
+    //             for (key, value) in file_meta.key_value {
+    //                 conn.execute(
+    //                     indoc! {"
+    //                         INSERT INTO file_metadata (file_id, key, value) VALUES (?1, ?2, ?3)
+    //                         ON CONFLICT(file_id, key) DO UPDATE SET value = excluded.value
+    //                     "},
+    //                     params![file_meta.file_id, key, value],
+    //                 )?;
+    //             }
+    //         }
+    //         Ok(())
+    //     })
+    // }
+
+    pub fn insert_embeddings(
         &self,
-        path: &Path,
-        emb_type_id: Option<u32>,
-    ) -> Result<Option<FileEmbResult>> {
-        self.with_conn(|conn| {
-            let path_string = path.to_string_lossy();
-
-            let sql = if emb_type_id.is_none() {
-                indoc! {"
-                    SELECT f.id, em.id, em.emb_type_id, em.last_file_mtime, em.last_file_size
-                    FROM file f
-                    LEFT JOIN emb_metadata em
-                        ON em.file_id = f.id
-                    WHERE f.path = ?1
-                "}
-            } else {
-                indoc! {"
-                    SELECT f.id, em.id, em.emb_type_id, em.last_file_mtime, em.last_file_size
-                    FROM file f
-                    LEFT JOIN emb_metadata em
-                        ON em.file_id = f.id
-                        AND em.emb_type_id = ?2
-                    WHERE f.path = ?1
-                "}
-            };
-
-            let mut stmt = conn.prepare(sql)?;
-            let mut rows = if emb_type_id.is_none() {
-                stmt.query(params![&path_string])?
-            } else {
-                stmt.query(params![&path_string, emb_type_id.unwrap()])?
-            };
-
-            let mut file_id: Option<i64> = None;
-            let mut embeddings: Vec<EmbMetadata> = Vec::new();
-
-            while let Some(row) = rows.next()? {
-                file_id = row.get(0).ok();
-
-                if let Some(emb_id) = row.get::<_, Option<i64>>(1)? {
-                    embeddings.push(EmbMetadata {
-                        id: emb_id,
-                        file_id: file_id.unwrap(),
-                        emb_type_id: row.get(2)?,
-                        last_file_mtime: row.get(3)?,
-                        last_file_size: row.get(4)?,
-                    });
-                }
-            }
-
-            Ok(file_id.map(|file_id| FileEmbResult {
-                file_id,
-                embeddings,
-            }))
-        })
-    }
-
-    pub fn insert_metadata(
-        &self,
-        paths_and_metadatas: Vec<(PathBuf, &FileType, HashMap<String, String>)>,
-    ) -> Result<()> {
-        self.with_conn(|conn: &mut Connection| {
-            let tx = conn.transaction()?;
-
-            for (path, file_type, key_value) in paths_and_metadatas.iter() {
-                let path_str = absolute(path)?.display().to_string();
-                tx.execute(indoc! {"
-                    INSERT INTO file (path, type) VALUES (?1, ?2)
-                    ON CONFLICT(path) DO UPDATE SET type = excluded.type
-                "}, (&path_str, file_type.as_str()))?;
-                let file_id: i64 = tx.query_row(
-                    "SELECT id FROM file WHERE path = ?1",
-                    params![&path_str],
-                    |row| row.get(0),
-                )?;
-
-                for (key, value) in key_value {
-                    tx.execute(indoc! {"
-                        INSERT INTO file_metadata (file_id, meta_key, meta_value) VALUES (?1, ?2, ?3)
-                        ON CONFLICT(file_id, meta_key) DO UPDATE SET meta_value = excluded.meta_value
-                    "}, params![file_id, key, value])?;
-                };
-            };
-
-            tx.commit()?;
-            Ok(())
-        })
-    }
-
-    pub fn insert_files_and_embeddings(
-        &self,
-        paths_and_embeddings: Vec<(PathBuf, Vec<f32>)>,
-        files_type: &FileType,
         emb_type_id: u32,
+        files_embeddings: Vec<FileEmbedding>,
     ) -> Result<()> {
-        self.with_conn(|conn: &mut Connection| {
+        self.with_conn(|conn| {
             let tx = conn.transaction()?;
 
-            for (path, embedding) in paths_and_embeddings {
-                let path_str = absolute(&path)?.display().to_string();
-                let metadata = fs::metadata(path)?;
-                let modified_at = metadata
-                    .modified()?
-                    .duration_since(std::time::UNIX_EPOCH)?
-                    .as_millis() as i64;
-                let size = metadata.len() as i64;
+            for file_emb in files_embeddings {
                 let indexed_at = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)?
                     .as_millis() as i64;
-
-                tx.execute(
-                    indoc! {"
-                        INSERT INTO file (path, type) VALUES (?1, ?2)
-                        ON CONFLICT(path) DO UPDATE SET type = excluded.type
-                    "},
-                    (&path_str, files_type.as_str()),
-                )?;
-                let file_id: i64 = tx.query_row(
-                    "SELECT id FROM file WHERE path = ?1",
-                    params![&path_str],
-                    |row| row.get(0),
-                )?;
 
                 let emb_id: i64 = tx.query_row(
                     indoc! {"
@@ -299,7 +411,7 @@ impl Database {
                             indexed_at = excluded.indexed_at
                         RETURNING id
                     "},
-                    params![file_id, emb_type_id, modified_at, size, indexed_at],
+                    params![file_emb.file_id, emb_type_id, file_emb.file_mtime, file_emb.file_size, indexed_at],
                     |row| row.get(0),
                 )?;
 
@@ -307,12 +419,37 @@ impl Database {
                     &format!(
                         "INSERT OR REPLACE INTO vec_model{emb_type_id} (emb_id, vec) VALUES (?1, ?2)"
                     ),
-                    params![emb_id, embedding.as_bytes()],
+                    params![emb_id, file_emb.embedding.as_bytes()],
                 )?;
             }
 
             tx.commit()?;
             Ok(())
+        })
+    }
+
+    pub fn get_all_files_with_emb_status(
+        &self,
+        emb_type_id: u32,
+    ) -> Result<Vec<FileWithEmbStatus>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(indoc! {"
+                SELECT f.id, f.path, f.type, em.last_file_mtime, em.last_file_size
+                FROM file f
+                LEFT JOIN emb_metadata em ON em.file_id = f.id AND em.emb_type_id = ?1
+            "})?;
+
+            stmt.query_map(params![emb_type_id], |row| {
+                Ok(FileWithEmbStatus {
+                    id: row.get(0)?,
+                    path: PathBuf::from(row.get::<_, String>(1)?),
+                    file_type: row.get(2)?,
+                    last_file_mtime: row.get(3)?,
+                    last_file_size: row.get(4)?,
+                })
+            })?
+            .map(|r| r.map_err(Into::into))
+            .collect()
         })
     }
 
@@ -323,7 +460,7 @@ impl Database {
         max_results: u32,
         threshold: f32,
     ) -> Result<Vec<SearchResult>> {
-        self.with_conn(|conn: &mut Connection| {
+        self.with_conn(|conn| {
             let sql = formatdoc!(
                 "
                 SELECT
@@ -352,7 +489,7 @@ impl Database {
                         let path = row.get::<_, String>(1)?;
                         let file_type = row.get::<_, String>(2)?;
                         let score = row.get::<_, f32>(3)?;
-                        let filename = std::path::Path::new(&path)
+                        let filename = Path::new(&path)
                             .file_name()
                             .and_then(|f| f.to_str())
                             .unwrap_or("")
@@ -371,16 +508,5 @@ impl Database {
 
             Ok(results)
         })
-    }
-
-    pub fn count_indexed_files(&self) -> Result<i64> {
-        self.with_conn(|conn| {
-            conn.query_row("SELECT COUNT(id) FROM file", [], |row| row.get(0))
-                .map_err(Into::into)
-        })
-    }
-
-    pub fn clear_index(&self) -> Result<usize> {
-        self.with_conn(|conn| Ok(conn.execute("DELETE FROM file", [])?))
     }
 }

@@ -1,12 +1,12 @@
-use crate::errors::AppError;
-use crate::frontend::IndexingState;
 use crate::{
-    db::{FileEmbResult, FileType},
-    frontend::{MessageKind, MessagePayload, clear_index_status, update_index_status},
+    db::{FileEmbedding, FileType},
+    errors::AppError,
+    frontend::{IndexingState, clear_index_status, update_index_status},
     models::{ModelManifest, VisualSearchModel},
     state::AppState,
 };
 use serde::Serialize;
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock, atomic::Ordering};
@@ -19,7 +19,7 @@ pub struct IndexingResult {
     processed: usize,
     total: usize,
     elapsed_secs: u64,
-    stopped: bool,
+    was_paused: bool,
     errors: Vec<(String, AppError)>,
 }
 
@@ -33,23 +33,53 @@ static IMAGE_EXTENSIONS: [&str; 10] = [
 #[cfg(feature = "video")]
 static VIDEO_EXTENSIONS: [&str; 8] = ["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm", "mpeg"];
 
+pub struct File {
+    id: i64,
+    path: PathBuf,
+}
+
 struct FileList {
-    paths: Vec<PathBuf>,
+    files: Vec<File>,
     batch_size: u32,
     file_type: FileType,
 }
 
+fn collect_files_from_dir(dir_path: &std::path::Path) -> Vec<(PathBuf, FileType)> {
+    let mut files = vec![];
+
+    for entry in WalkDir::new(dir_path).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase());
+
+        match ext.as_deref() {
+            Some(e) if IMAGE_EXTENSIONS.contains(&e) => {
+                files.push((path.to_path_buf(), FileType::IMG))
+            }
+            #[cfg(feature = "video")]
+            Some(e) if VIDEO_EXTENSIONS.contains(&e) => {
+                files.push((path.to_path_buf(), FileType::VID))
+            }
+            _ => {}
+        }
+    }
+
+    files
+}
+
 #[command]
-pub async fn index_directory(app_handle: AppHandle, dir: String) -> Option<IndexingResult> {
+pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, AppError> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app_handle.state::<AppState>();
         let selected_model_manifest = state.selected_model;
 
         if state.is_indexing.load(Ordering::Relaxed) {
-            MessagePayload::new("indexing_error", MessageKind::Warning)
-                .param("error", serde_json::json!("already_indexing"))
-                .emit(&app_handle);
-            return None;
+            return Err(AppError::AlreadyIndexing);
         }
 
         let selected_visual_model =
@@ -61,31 +91,28 @@ pub async fn index_directory(app_handle: AppHandle, dir: String) -> Option<Index
             .unwrap()
             .is_vision_encoder_loaded()
         {
-            MessagePayload::new("model_not_ready", MessageKind::Info).emit(&app_handle);
             clear_index_status(&app_handle);
-            return None;
+            return Err(AppError::ModelNotReady);
         }
 
-        let dir_path = PathBuf::from(dir);
-
-        if !dir_path.is_dir() {
-            MessagePayload::new("invalid_directory", MessageKind::Warning).emit(&app_handle);
+        let dirs = state.db.get_dirs().unwrap_or_default();
+        if dirs.is_empty() {
             clear_index_status(&app_handle);
-            return None;
+            return Err(AppError::NoIndex);
         }
 
         let start_time = Instant::now();
 
         state.is_indexing.store(true, Ordering::Relaxed);
-        state.indexing_stopped.store(false, Ordering::Relaxed);
+        state.indexing_paused.store(false, Ordering::Relaxed);
 
         let mut total = 0usize;
         let mut processed = 0usize;
         let mut errors: Vec<(String, AppError)> = vec![];
 
-        let indexing_result = dir_indexing(
+        let result = indexing(
             &app_handle,
-            &dir_path,
+            &dirs,
             state.deref(),
             &selected_model_manifest,
             selected_visual_model,
@@ -94,33 +121,23 @@ pub async fn index_directory(app_handle: AppHandle, dir: String) -> Option<Index
             &mut errors,
         );
 
-        if let Err(e) = indexing_result {
-            update_index_status(&app_handle, 0, 0, 0, IndexingState::FatalError);
-            MessagePayload::new("indexing_error", MessageKind::Error)
-                .param("error", serde_json::json!(e))
-                .emit(&app_handle);
-            return None;
-        }
-
-        let stopped = state.indexing_stopped.load(Ordering::Relaxed);
-        update_index_status(
-            &app_handle,
-            processed,
-            total,
-            errors.len(),
-            IndexingState::Idle,
-        );
+        let was_paused = state.indexing_paused.load(Ordering::Relaxed);
 
         let elapsed_secs = start_time.elapsed().as_secs();
 
         state.is_indexing.store(false, Ordering::Relaxed);
-        state.indexing_stopped.store(false, Ordering::Relaxed);
+        state.indexing_paused.store(false, Ordering::Relaxed);
 
-        Some(IndexingResult {
+        if let Err(e) = result {
+            update_index_status(&app_handle, 0, 0, 0, IndexingState::FatalError);
+            return Err(e);
+        }
+
+        Ok(IndexingResult {
             processed,
             total,
             elapsed_secs,
-            stopped,
+            was_paused,
             errors,
         })
     })
@@ -128,9 +145,9 @@ pub async fn index_directory(app_handle: AppHandle, dir: String) -> Option<Index
     .unwrap()
 }
 
-fn dir_indexing(
+fn indexing(
     app_handle: &AppHandle,
-    dir_path: &PathBuf,
+    dirs: &[String],
     state: &AppState,
     selected_model_manifest: &ModelManifest,
     selected_visual_model: Arc<RwLock<dyn VisualSearchModel>>,
@@ -147,155 +164,157 @@ fn dir_indexing(
         .map_err(|e| e.to_string())?;
     let emb_type_id = emb_type_ids[0];
 
-    let mut images: Vec<PathBuf> = vec![];
-    #[cfg(feature = "video")]
-    let mut videos: Vec<PathBuf> = vec![];
-
-    for entry in WalkDir::new(dir_path).into_iter().filter_map(|e| e.ok()) {
-        if state.indexing_stopped.load(Ordering::Relaxed) {
+    for dir_str in dirs {
+        if state.indexing_paused.load(Ordering::Relaxed) {
             return Ok(());
         }
 
-        let path = entry.path();
-        if !path.is_file() {
+        let dir_path = PathBuf::from(dir_str);
+        if !dir_path.is_dir() {
             continue;
         }
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase());
 
-        match ext.as_deref() {
-            Some(e) if IMAGE_EXTENSIONS.contains(&e) => images.push(path.to_path_buf()),
-            #[cfg(feature = "video")]
-            Some(e) if VIDEO_EXTENSIONS.contains(&e) => videos.push(path.to_path_buf()),
-            _ => {}
+        let files = collect_files_from_dir(&dir_path);
+        match state.db.update_directory(dir_str, files) {
+            Err(e) if e.downcast_ref() == Some(&rusqlite::Error::QueryReturnedNoRows) => {
+                return Ok(());
+            }
+            other => other.map_err(|e| e.to_string())?,
         }
     }
 
+    let all_files_db = state
+        .db
+        .get_all_files_with_emb_status(emb_type_id)
+        .map_err(|e| e.to_string())?;
+
+    let mut images_to_index: Vec<File> = vec![];
+    #[cfg(feature = "video")]
+    let mut videos_to_index: Vec<File> = vec![];
+
+    for file in all_files_db {
+        if state.indexing_paused.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+
+        let Ok(metadata) = std::fs::metadata(&file.path) else {
+            continue;
+        };
+        let mtime = metadata
+            .modified()
+            .map_err(|e| e.to_string())?
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis() as i64;
+        let size = metadata.len() as i64;
+
+        let needs_index = match (file.last_file_mtime, file.last_file_size) {
+            (None, None) => true,
+            (Some(mt), Some(sz)) => mtime != mt || size != sz,
+            _ => true,
+        };
+
+        if needs_index {
+            match file.file_type.as_str() {
+                "IMG" => images_to_index.push(File {
+                    id: file.id,
+                    path: file.path,
+                }),
+                #[cfg(feature = "video")]
+                "VID" => videos_to_index.push(File {
+                    id: file.id,
+                    path: file.path,
+                }),
+                _ => {}
+            }
+        } else {
+            *processed += 1;
+        }
+    }
+
+    *total = *processed + images_to_index.len();
     #[cfg(feature = "video")]
     {
-        *total = images.len() + videos.len();
-    }
-    #[cfg(not(feature = "video"))]
-    {
-        *total = images.len();
+        *total += videos_to_index.len();
     }
 
     if *total == 0 {
-        update_index_status(&app_handle, 0, 0, 0, IndexingState::Idle);
         return Ok(());
     }
+
+    update_index_status(
+        app_handle,
+        *processed,
+        *total,
+        errors.len(),
+        IndexingState::Indexing,
+    );
 
     let progress_update_interval = Duration::from_millis(100);
     let mut last_progress_update = Instant::now();
 
     let file_lists = [
         FileList {
-            paths: images,
+            files: images_to_index,
             batch_size,
             file_type: FileType::IMG,
         },
         #[cfg(feature = "video")]
         FileList {
-            paths: videos,
+            files: videos_to_index,
             batch_size: 1,
             file_type: FileType::VID,
         },
     ];
 
     for FileList {
-        paths,
+        files,
         batch_size,
         file_type,
     } in file_lists
     {
-        let mut needs_indexing: Vec<PathBuf> = vec![];
-
-        for path in paths {
-            if state.indexing_stopped.load(Ordering::Relaxed) {
+        for chunk in files.chunks(batch_size as usize) {
+            if state.indexing_paused.load(Ordering::Relaxed) {
                 return Ok(());
             }
 
-            let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-            let mtime = metadata
-                .modified()
-                .map_err(|e| e.to_string())?
-                .duration_since(UNIX_EPOCH)
-                .map_err(|e| e.to_string())?
-                .as_millis() as i64;
-            let size = metadata.len();
-
-            let file_in_db = state
-                .db
-                .get_emb_by_file_path(&path, Some(emb_type_id))
-                .unwrap();
-            match file_in_db {
-                // File is not in DB
-                None => needs_indexing.push(path),
-                Some(FileEmbResult { ref embeddings, .. }) => match embeddings.get(0) {
-                    // File is in DB but has no embedding of this type yet
-                    None => needs_indexing.push(path),
-                    // Embedding exists but file has changed since it was indexed
-                    Some(emb)
-                        if mtime != emb.last_file_mtime || size != emb.last_file_size as u64 =>
-                    {
-                        needs_indexing.push(path);
-                    }
-                    // Embedding is up to date
-                    Some(_) => {
-                        *processed += 1;
-                        if last_progress_update.elapsed() > progress_update_interval {
-                            update_index_status(
-                                &app_handle,
-                                *processed,
-                                *total,
-                                errors.len(),
-                                IndexingState::Indexing,
-                            );
-                            last_progress_update = Instant::now();
-                        }
-                    }
-                },
-            }
-        }
-
-        update_index_status(
-            &app_handle,
-            *processed,
-            *total,
-            errors.len(),
-            IndexingState::Indexing,
-        );
-
-        for chunk in needs_indexing.chunks(batch_size as usize) {
-            if state.indexing_stopped.load(Ordering::Relaxed) {
-                return Ok(());
-            }
-
+            let path_to_id: HashMap<&PathBuf, i64> =
+                chunk.iter().map(|f| (&f.path, f.id)).collect();
+            let paths: Vec<PathBuf> = chunk.iter().map(|f| f.path.clone()).collect();
             let result = match file_type {
-                FileType::IMG => selected_visual_model.write().unwrap().embed_images(chunk),
+                FileType::IMG => selected_visual_model.write().unwrap().embed_images(&paths),
                 #[cfg(feature = "video")]
-                FileType::VID => {
-                    let path = &chunk[0];
-                    selected_visual_model
-                        .write()
-                        .unwrap()
-                        .embed_video(&path, num_frames)
-                }
+                FileType::VID => selected_visual_model
+                    .write()
+                    .unwrap()
+                    .embed_video(&chunk[0].path, num_frames),
             };
 
-            if state.indexing_stopped.load(Ordering::Relaxed) {
+            if state.indexing_paused.load(Ordering::Relaxed) {
                 return Ok(());
             }
 
             match result {
                 Ok(emb_results) => {
-                    let mut paths_and_embeddings: Vec<(PathBuf, Vec<f32>)> = vec![];
+                    let mut embeddings: Vec<FileEmbedding> = vec![];
                     for (path, emb_res) in emb_results {
+                        let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+                        let modified_at = metadata
+                            .modified()
+                            .map_err(|e| e.to_string())?
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map_err(|e| e.to_string())?
+                            .as_millis() as i64;
+                        let size = metadata.len() as i64;
+
                         match emb_res {
                             Ok(emb) => {
-                                paths_and_embeddings.push((path, emb.to_vec()));
+                                embeddings.push(FileEmbedding {
+                                    file_id: *path_to_id.get(&path).unwrap(),
+                                    file_mtime: modified_at,
+                                    file_size: size,
+                                    embedding: emb.to_vec(),
+                                });
                             }
                             Err(e) => {
                                 errors.push((path.display().to_string(), e));
@@ -303,15 +322,15 @@ fn dir_indexing(
                         }
                     }
 
-                    *processed += paths_and_embeddings.len();
+                    *processed += embeddings.len();
                     state
                         .db
-                        .insert_files_and_embeddings(paths_and_embeddings, &file_type, emb_type_id)
+                        .insert_embeddings(emb_type_id, embeddings)
                         .map_err(|e| e.to_string())?;
                 }
                 Err(e) => {
-                    for path in chunk {
-                        errors.push((path.display().to_string(), e.clone()));
+                    for file in chunk {
+                        errors.push((file.path.display().to_string(), e.clone()));
                     }
                 }
             }
@@ -332,7 +351,7 @@ fn dir_indexing(
 }
 
 #[command]
-pub async fn stop_indexing(state: State<'_, AppState>) -> Result<(), ()> {
-    state.indexing_stopped.store(true, Ordering::Relaxed);
+pub async fn pause_indexing(state: State<'_, AppState>) -> Result<(), ()> {
+    state.indexing_paused.store(true, Ordering::Relaxed);
     Ok(())
 }
