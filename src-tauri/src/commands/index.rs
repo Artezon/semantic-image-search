@@ -107,8 +107,8 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
         state.is_indexing.store(true, Ordering::Relaxed);
         state.indexing_paused.store(false, Ordering::Relaxed);
 
+        let mut processed = state.indexing_processed.load(Ordering::Relaxed) as usize;
         let mut total = 0usize;
-        let mut processed = 0usize;
         let mut errors: Vec<(String, AppError)> = vec![];
 
         let result = indexing(
@@ -129,8 +129,12 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
             state
                 .indexing_elapsed_secs
                 .store(elapsed_secs, Ordering::Relaxed);
+            state
+                .indexing_processed
+                .store(processed as u64, Ordering::Relaxed);
         } else {
             state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
+            state.indexing_processed.store(0, Ordering::Relaxed);
         }
 
         state.is_indexing.store(false, Ordering::Relaxed);
@@ -138,6 +142,7 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
 
         if let Err(e) = result {
             state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
+            state.indexing_processed.store(0, Ordering::Relaxed);
             update_index_status(&app_handle, 0, 0, 0, IndexingState::FatalError);
             return Err(e);
         }
@@ -236,8 +241,6 @@ fn indexing(
                 }),
                 _ => {}
             }
-        } else {
-            *processed += 1;
         }
     }
 
