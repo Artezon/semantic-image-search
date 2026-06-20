@@ -73,5 +73,5 @@ pub fn search(
     state
         .db
         .search_embeddings(query_embedding, emb_type_id, max_results, threshold)
-        .map_err(AppError::unknown)
+        .map_err(AppError::generic)
 }

@@ -1,6 +1,8 @@
 import { ref, watch, reactive, type Ref } from "vue";
 import type { Config, IndexingState, SearchResult } from "./types";
 import { invoke } from "@tauri-apps/api/core";
+import { i18n } from "./i18n";
+const { t } = i18n.global;
 
 // Config state
 export const config = reactive<Config>({} as Config);
@@ -39,7 +41,7 @@ loadConfig().then(([current, defaults]) => {
 export const modelStatusKey = ref("not_loaded");
 export const modelStatusColor = ref("var(--text-secondary)");
 export const modelStatusParams = ref<Record<string, string>>({});
-export const deviceText = ref("unknown");
+export const deviceText = ref(t("device_unknown"));
 
 // Indexing state
 export const indexProgress = ref(0);

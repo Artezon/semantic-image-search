@@ -1,14 +1,14 @@
 <template>
   <div class="results-panel" ref="panelRef">
     <div class="column-titlebar results-titlebar">
-      <h1 class="centered-text">{{ $t("results.title") }}</h1>
+      <h1 class="centered-text">{{ $t("search.results.title") }}</h1>
     </div>
 
     <div class="results-container">
       <!-- Searching spinner -->
       <div v-if="isSearching" class="centered">
         <div class="spinner"></div>
-        <div class="no-results">{{ $t("results.searching") }}</div>
+        <div class="no-results">{{ $t("search.results.searching") }}</div>
       </div>
 
       <!-- No results -->
@@ -16,7 +16,7 @@
         v-else-if="searchResults !== null && searchResults.length === 0"
         class="no-results centered"
       >
-        {{ $t("results.no_results") }}
+        {{ $t("search.results.no_results") }}
       </div>
 
       <!-- Results grid -->

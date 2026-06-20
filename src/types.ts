@@ -20,7 +20,7 @@ export type ModelStatus = {
 
 export type AppError = {
   code: string;
-  msg?: string;
+  detail?: string;
 };
 
 export type IndexingState =

@@ -62,7 +62,7 @@ pub fn preload_libs(libs_dir: &Path) -> Result<(), AppError> {
         let path = libs_dir.join(entry.filename);
         if entry.required && !path.exists() {
             return Err(AppError::LibraryLoadFailed {
-                msg: "not_found".to_string(),
+                detail: "not_found".to_string(),
                 name: path.display().to_string(),
             });
         }
@@ -74,7 +74,7 @@ pub fn preload_libs(libs_dir: &Path) -> Result<(), AppError> {
                 Err(e) => {
                     if entry.required {
                         return Err(AppError::LibraryLoadFailed {
-                            msg: e.to_string(),
+                            detail: e.to_string(),
                             name: path.display().to_string(),
                         });
                     }

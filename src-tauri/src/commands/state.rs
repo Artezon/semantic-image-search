@@ -44,7 +44,7 @@ pub fn get_indexed_count(app_handle: AppHandle) -> i64 {
 
 #[command]
 pub async fn get_dirs(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
-    state.db.get_dirs().map_err(AppError::unknown)
+    state.db.get_dirs().map_err(AppError::generic)
 }
 
 #[command]
@@ -53,12 +53,12 @@ pub async fn add_directory(state: State<'_, AppState>, path: String) -> Result<(
     if !dir_path.is_dir() {
         return Err(AppError::InvalidDirectory);
     }
-    state.db.add_directory(&path).map_err(AppError::unknown)
+    state.db.add_directory(&path).map_err(AppError::generic)
 }
 
 #[command]
 pub async fn remove_directory(state: State<'_, AppState>, path: String) -> Result<(), AppError> {
-    state.db.remove_directory(&path).map_err(AppError::unknown)
+    state.db.remove_directory(&path).map_err(AppError::generic)
 }
 
 #[command]
@@ -69,7 +69,7 @@ pub async fn reorder_directories(
     state
         .db
         .reorder_directories(&paths)
-        .map_err(AppError::unknown)
+        .map_err(AppError::generic)
 }
 
 #[command(async)]

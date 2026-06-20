@@ -14,7 +14,7 @@ pub fn build_session(
     let cuda = ep::CUDA::default();
 
     let mut builder = Session::builder().map_err(|e| AppError::ModelLoadFailed {
-        msg: e.to_string(),
+        detail: e.to_string(),
         model_name: manifest.name,
     })?;
     let device = if cpu_only {
@@ -30,7 +30,7 @@ pub fn build_session(
     let session = builder
         .commit_from_file(models_base_dir.join(manifest.files[file_index]))
         .map_err(|e| AppError::ModelLoadFailed {
-            msg: e.to_string(),
+            detail: e.to_string(),
             model_name: manifest.name,
         })?;
     Ok((session, device))
@@ -43,7 +43,7 @@ pub fn build_tokenizer(
 ) -> Result<Tokenizer, AppError> {
     let tokenizer = Tokenizer::from_file(models_base_dir.join(manifest.files[file_index]))
         .map_err(|e| AppError::TokenizerLoadFailed {
-            msg: e.to_string(),
+            detail: e.to_string(),
             model_name: manifest.name,
         })?;
     Ok(tokenizer)
@@ -100,6 +100,6 @@ pub fn clip_prepare_image(
     mean: [f32; 3],
     std: [f32; 3],
 ) -> Result<Vec<f32>, AppError> {
-    let img = open_image_as_rgb(path).map_err(AppError::unknown)?;
+    let img = open_image_as_rgb(path).map_err(AppError::generic)?;
     Ok(clip_prepare_rgb(&img, w, h, mean, std))
 }

@@ -327,12 +327,14 @@ fn indexing(
                             }
                             Err(e) => {
                                 let err_value = serde_json::to_value(&e).unwrap_or_default();
-                                let msg =
-                                    err_value.get("msg").and_then(|m| m.as_str()).unwrap_or("");
+                                let detail = err_value
+                                    .get("detail")
+                                    .and_then(|m| m.as_str())
+                                    .unwrap_or("");
                                 let path_str = path.display().to_string();
                                 MessagePayload::new("indexing_error")
                                     .param("path", serde_json::json!(path_str))
-                                    .param("msg", serde_json::json!(msg))
+                                    .param("detail", serde_json::json!(detail))
                                     .emit(app_handle);
                                 errors.push((path_str, e));
                             }
@@ -347,12 +349,15 @@ fn indexing(
                 }
                 Err(e) => {
                     let err_value = serde_json::to_value(&e).unwrap_or_default();
-                    let msg = err_value.get("msg").and_then(|m| m.as_str()).unwrap_or("");
+                    let detail = err_value
+                        .get("detail")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("");
                     for file in chunk {
                         let path_str = file.path.display().to_string();
                         MessagePayload::new("indexing_error")
                             .param("path", serde_json::json!(path_str))
-                            .param("msg", serde_json::json!(msg))
+                            .param("detail", serde_json::json!(detail))
                             .emit(app_handle);
                         errors.push((path_str, e.clone()));
                     }

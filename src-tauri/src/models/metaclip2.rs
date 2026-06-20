@@ -240,8 +240,11 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
 
         let batch_size = frame_tensors.len();
         let flat: Vec<f32> = frame_tensors.into_iter().flatten().collect();
-        let pixel_tensor = Array4::from_shape_vec((batch_size, 3, h, w), flat)
-            .map_err(|e| AppError::ModelInferenceFailed { msg: e.to_string() })?;
+        let pixel_tensor = Array4::from_shape_vec((batch_size, 3, h, w), flat).map_err(|e| {
+            AppError::ModelInferenceFailed {
+                detail: e.to_string(),
+            }
+        })?;
 
         let outputs = self.vision_session.as_mut().unwrap().run(inputs![
             "pixel_values" => TensorRef::from_array_view(pixel_tensor.view())?,

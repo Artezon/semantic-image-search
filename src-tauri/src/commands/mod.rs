@@ -1,4 +1,4 @@
-pub mod indexing;
+pub mod index;
 pub mod search;
 pub mod state;
 pub mod thumbnail;
@@ -17,8 +17,8 @@ macro_rules! get_handlers {
             commands::state::add_directory,
             commands::state::remove_directory,
             commands::state::reorder_directories,
-            commands::indexing::index_directories,
-            commands::indexing::pause_indexing,
+            commands::index::index_directories,
+            commands::index::pause_indexing,
             commands::search::search,
             commands::thumbnail::get_thumbnail,
         ]

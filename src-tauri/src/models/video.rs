@@ -29,9 +29,13 @@ pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage
         let events = ffmpeg()
             .input(path.to_string_lossy())
             .spawn()
-            .map_err(|e| AppError::VideoReadFailed { msg: e.to_string() })?
+            .map_err(|e| AppError::VideoReadFailed {
+                detail: e.to_string(),
+            })?
             .iter()
-            .map_err(|e| AppError::VideoReadFailed { msg: e.to_string() })?;
+            .map_err(|e| AppError::VideoReadFailed {
+                detail: e.to_string(),
+            })?;
         for event in events {
             if let FfmpegEvent::ParsedDuration(d) = event {
                 dur = Some(d.duration);
@@ -39,13 +43,13 @@ pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage
             }
         }
         dur.ok_or(AppError::VideoReadFailed {
-            msg: "duration_error".to_string(),
+            detail: "duration_error".to_string(),
         })?
     };
 
     if duration <= 0.0 {
         return Err(AppError::VideoReadFailed {
-            msg: "duration_error".to_string(),
+            detail: "duration_error".to_string(),
         });
     }
 
@@ -58,12 +62,14 @@ pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage
     }
 
     cmd.args(["-vframes", &num_frames.to_string()]).rawvideo();
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| AppError::VideoReadFailed { msg: e.to_string() })?;
+    let mut child = cmd.spawn().map_err(|e| AppError::VideoReadFailed {
+        detail: e.to_string(),
+    })?;
     let frames: Vec<RgbImage> = child
         .iter()
-        .map_err(|e| AppError::VideoReadFailed { msg: e.to_string() })?
+        .map_err(|e| AppError::VideoReadFailed {
+            detail: e.to_string(),
+        })?
         .filter_map(|e| {
             if let FfmpegEvent::OutputFrame(frame) = e {
                 RgbImage::from_raw(frame.width, frame.height, frame.data)
@@ -77,7 +83,7 @@ pub fn extract_video_frames(path: &Path, num_frames: u32) -> Result<Vec<RgbImage
 
     if frames.is_empty() {
         return Err(AppError::VideoReadFailed {
-            msg: "message.index_result.errors.video_format_unsupported".to_string(),
+            detail: "error.video_format_unsupported".to_string(),
         });
     }
 

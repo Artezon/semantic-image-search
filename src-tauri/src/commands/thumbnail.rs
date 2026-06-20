@@ -40,7 +40,7 @@ pub async fn get_thumbnail(path: String, file_type: String) -> Result<ThumbnailR
         _ => Ok(ThumbnailResult::empty()),
     })
     .await
-    .map_err(AppError::unknown)?
+    .map_err(AppError::generic)?
 }
 
 #[cfg(feature = "video")]
@@ -61,7 +61,7 @@ fn generate_video_thumbnail(_path: &PathBuf) -> Result<ThumbnailResult, AppError
 }
 
 fn generate_image_thumbnail(path: &PathBuf) -> Result<ThumbnailResult, AppError> {
-    let img = open_image_as_rgb(path).map_err(AppError::unknown)?;
+    let img = open_image_as_rgb(path).map_err(AppError::generic)?;
     encode_jpeg(DynamicImage::ImageRgb8(img))
 }
 
@@ -70,6 +70,6 @@ fn encode_jpeg(img: DynamicImage) -> Result<ThumbnailResult, AppError> {
     let mut buf = vec![];
     JpegEncoder::new_with_quality(&mut buf, THUMBNAIL_JPEG_QUALITY)
         .encode_image(&img)
-        .map_err(AppError::unknown)?;
+        .map_err(AppError::generic)?;
     Ok(ThumbnailResult::jpeg(buf))
 }

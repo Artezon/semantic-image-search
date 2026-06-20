@@ -2,7 +2,7 @@
   <div class="app-sidebar">
     <div class="column-titlebar">
       <h1 class="centered-text">{{ $t("app.title") }}</h1>
-      <div class="splash">{{ $t("app.version") }}</div>
+      <div class="splash">v{{ appVersion }}</div>
     </div>
 
     <div class="sidebar-section">
@@ -104,6 +104,8 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+
+const appVersion = __APP_VERSION__;
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -134,12 +136,12 @@ import { formatSeconds } from "../utils";
 import RichProgressBar from "./RichProgressBar.vue";
 import DirectoryList from "./DirectoryList.vue";
 
-const { t } = useI18n();
+const { t } = useI18n({ useScope: "global" });
 
 const modelStatusText = computed(() => {
   const key = modelStatusKey.value as string;
   const params = modelStatusParams.value;
-  if (key === "error") return t("model_status.error", { error: params.error || "" });
+  if (key === "error") return params.error || "";
   return t(`model_status.${key}`, params);
 });
 
@@ -149,9 +151,9 @@ const indexStatusText = computed(() => {
   if (state === "indexing") {
     const processed = indexProcessed.value;
     const total = indexTotal.value;
-    return t("index_status.indexing", { processed, total });
+    return t("indexing.state.indexing", { processed, total });
   }
-  return t(`index_status.${state}`, {
+  return t(`indexing.state.${state}`, {
     processed: indexProcessed.value,
     total: indexTotal.value,
   });
@@ -175,7 +177,7 @@ async function addDirectory() {
   } catch (e) {
     const err = e as AppError;
     await showInfoModal(
-      t(`error.${err.code}`, { message: err.msg }),
+      t(`error.${err.code}`, { detail: err.detail }),
       t("message.invalid_directory.title"),
     );
   }
@@ -220,26 +222,26 @@ async function handleIndexingButton() {
 
       indexingState.value = "idle";
 
-      let summary = t("message.index_result.msg", {
+      let summary = t("indexing.complete.toast.msg", {
         processed,
         total,
         elapsed: formatSeconds(elapsed_secs),
       });
 
       if (errors.length === 0) {
-        showToast(summary, t("message.index_result.complete.title"), "info", true);
+        showToast(summary, t("indexing.complete.toast.header"), "info", true);
       } else {
-        summary += `\n${t("message.index_result.errors.header", { count: errors.length })}`;
-        showToast(summary, t("message.index_result.complete.title"), "info", true, {
+        summary += `\n${t("indexing.complete.toast.errors", { count: errors.length })}`;
+        showToast(summary, t("indexing.complete.toast.header"), "info", true, {
           label: t("action.show_errors"),
           onClick: () => {
-            const lines = errors.map(
-              ([path, err]) =>
-                `<b>${t("message.index_result.errors.skipped")}:</b> ${path}\n<b>${t("message.index_result.errors.reason")}:</b> ${err.msg ? t(err.msg) : err.code}`,
-            );
+            const lines = errors.map(([path, err]) => {
+              const reason = err.detail ? t(err.detail) : err.code;
+              return `${t("error.detail.skipped", { detail: path })}\n${t("error.detail.reason", { detail: reason })}`;
+            });
             showInfoModal(
               lines.join("\n\n"),
-              t("message.index_result.errors.title", { count: errors.length }),
+              t("indexing.complete.modal.errors.header", { count: errors.length }),
             );
           },
           closeToast: true,
@@ -248,8 +250,8 @@ async function handleIndexingButton() {
     } catch (e) {
       indexingState.value = "idle";
       const err = e as AppError;
-      const errorMsg = t(`error.${err.code}`, { message: err.msg });
-      await showInfoModal(errorMsg, t("message.indexing_error.title"));
+      const errorMsg = t(`error.${err.code}`, { detail: err.detail });
+      await showInfoModal(errorMsg, t("indexing.error.fatal.modal.header"));
     }
   }
 }
@@ -287,7 +289,7 @@ async function search() {
   } catch (e) {
     isSearching.value = false;
     const err = e as AppError;
-    const errorMsg = t(`error.${err.code}`, { message: err.msg });
+    const errorMsg = t(`error.${err.code}`, { detail: err.detail });
     await showInfoModal(errorMsg, t("message.search_error.title"));
   }
 }

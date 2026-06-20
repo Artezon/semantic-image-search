@@ -7,8 +7,8 @@
     @close="onCancel"
   >
     <template v-if="!removing">
-      <p v-html="$t('sidebar.confirm_remove_folder.message', { path: folderPath })" />
-      <p>{{ $t("sidebar.confirm_remove_folder.description") }}</p>
+      <p v-html="$t('confirm_remove_folder.modal.message', { path: folderPath })" />
+      <p>{{ $t("confirm_remove_folder.modal.description") }}</p>
     </template>
     <div v-else class="spinner-wrapper">
       <div class="spinner" />
@@ -41,7 +41,7 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>();
 
 const removing = ref(false);
-const title = ref<string | null>(t("sidebar.confirm_remove_folder.title"));
+const title = ref<string | null>(t("confirm_remove_folder.modal.title"));
 
 async function onConfirm() {
   removing.value = true;

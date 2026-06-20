@@ -3,13 +3,13 @@
     <Transition name="fade">
       <div class="state-loading" v-if="!loaded && !error" key="loading">
         <div class="spinner"></div>
-        <div class="loading-text">{{ $t("card.loading_preview") }}</div>
+        <div class="loading-text">{{ $t("search.results.card.preview.loading") }}</div>
       </div>
 
       <div class="state-loaded" v-else key="loaded">
         <template v-if="error">
           <div class="error-icon">⚠</div>
-          <div class="error-text">{{ $t("card.error_loading") }}</div>
+          <div class="error-text">{{ $t("search.results.card.preview.error") }}</div>
         </template>
         <template v-else>
           <img :src="thumbUrl" loading="lazy" :alt="result.filename" />
@@ -19,7 +19,7 @@
         <div class="result-card-overlay">
           <div class="result-card-title">{{ result.filename }}</div>
           <div class="result-card-score">
-            {{ $t("card.score", { score: result.score.toFixed(4) }) }}
+            {{ $t("search.results.card.score", { score: result.score.toFixed(4) }) }}
           </div>
         </div>
       </div>

@@ -1,4 +1,6 @@
-import i18n from "./i18n";
+import { i18n } from "./i18n";
+
+const { t } = i18n.global;
 
 // Enforce min/max on number inputs
 export function clamp(val: number, min: number, max: number, def?: number) {
@@ -7,7 +9,6 @@ export function clamp(val: number, min: number, max: number, def?: number) {
 }
 
 export function formatSeconds(totalSeconds: number): string {
-  const { t } = i18n.global;
   const h = Math.floor(totalSeconds / 3600);
   const rem = totalSeconds % 3600;
   const m = Math.floor(rem / 60);
