@@ -172,6 +172,9 @@ fn indexing(
     let batch_size = state.config.read().unwrap().batch_size;
     let num_frames = state.config.read().unwrap().video_frames;
 
+    let progress_update_interval = Duration::from_millis(100);
+    let mut last_progress_update = Instant::now();
+
     let emb_type_ids = state
         .db
         .add_model_to_db(selected_model_manifest)
@@ -242,12 +245,23 @@ fn indexing(
                 _ => {}
             }
         }
-    }
 
-    *total = *processed + images_to_index.len();
-    #[cfg(feature = "video")]
-    {
-        *total += videos_to_index.len();
+        *total = *processed + images_to_index.len();
+        #[cfg(feature = "video")]
+        {
+            *total += videos_to_index.len();
+        }
+
+        if *processed == 0 && last_progress_update.elapsed() > progress_update_interval {
+            send_index_status(
+                app_handle,
+                IndexingState::Preparing,
+                *processed,
+                *total,
+                errors.len(),
+            );
+            last_progress_update = Instant::now();
+        }
     }
 
     if *total == 0 {
@@ -261,9 +275,6 @@ fn indexing(
         *total,
         errors.len(),
     );
-
-    let progress_update_interval = Duration::from_millis(100);
-    let mut last_progress_update = Instant::now();
 
     let file_lists = [
         FileList {

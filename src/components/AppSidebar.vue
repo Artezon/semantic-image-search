@@ -148,15 +148,19 @@ const modelStatusText = computed(() => {
 const indexStatusText = computed(() => {
   const state = indexingState.value;
   if (state === "idle") return t("sidebar.indexed_count", { count: indexedFilesCount.value });
+  const total = indexTotal.value;
+  const fmt =
+    total > 0 ? { processed: indexProcessed.value, total } : { processed: "-", total: "-" };
   if (state === "indexing") {
-    const processed = indexProcessed.value;
-    const total = indexTotal.value;
-    return t("indexing.state.indexing", { processed, total });
+    return t("indexing.state.indexing", fmt);
   }
-  return t(`indexing.state.${state}`, {
-    processed: indexProcessed.value,
-    total: indexTotal.value,
-  });
+  if (state === "preparing") {
+    if (indexProcessed.value > 0) {
+      return t("indexing.state.resuming", fmt);
+    }
+    return t("indexing.state.preparing", fmt);
+  }
+  return t(`indexing.state.${state}`, fmt);
 });
 
 async function addDirectory() {
@@ -201,6 +205,14 @@ async function handleIndexingButton() {
     indexingState.value = "pausing";
     await invoke("pause_indexing");
   } else if (indexingState.value === "idle" || indexingState.value === "paused") {
+    if (indexedDirs.value.length === 0) {
+      await showInfoModal(
+        t("message.no_index.msg"),
+        t("indexing.error.empty_library.modal.header"),
+      );
+      return;
+    }
+
     const resuming = indexingState.value === "paused";
     indexingState.value = "preparing";
     if (!resuming) {
@@ -221,6 +233,16 @@ async function handleIndexingButton() {
       }
 
       indexingState.value = "idle";
+
+      if (total === 0) {
+        showToast(
+          t("indexing.complete.toast.up_to_date.msg"),
+          t("indexing.complete.toast.up_to_date.header"),
+          "info",
+          false,
+        );
+        return;
+      }
 
       let summary = t("indexing.complete.toast.msg", {
         processed,

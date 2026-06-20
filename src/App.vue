@@ -42,7 +42,10 @@ onMounted(async () => {
   // Prevent refreshing (e.g. F5, Ctrl+R)
   if (import.meta.env.PROD) {
     document.onkeydown = (event) => {
-      if (event.key === "F5" || (event.ctrlKey && event.key.toLowerCase() === "r")) {
+      if (
+        event.key === "F5" ||
+        ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r")
+      ) {
         event.preventDefault();
       }
     };

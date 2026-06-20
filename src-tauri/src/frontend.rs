@@ -41,6 +41,7 @@ pub enum ModelStatus {
 pub enum IndexingState {
     #[default]
     Idle,
+    Preparing,
     Indexing,
     FatalError,
 }
