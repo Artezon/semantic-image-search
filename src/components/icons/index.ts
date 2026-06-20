@@ -12,6 +12,12 @@ export { default as CloseIcon } from "./RemoveFromLibraryIcon.vue";
 export { default as UpIcon } from "./UpIcon.vue";
 export { default as DownIcon } from "./DownIcon.vue";
 
+export { default as ToastInfoIcon } from "./toast/InfoIcon.vue";
+export { default as ToastSuccessIcon } from "./toast/SuccessIcon.vue";
+export { default as ToastErrorIcon } from "./toast/ErrorIcon.vue";
+export { default as ToastCopyIcon } from "./toast/CopyIcon.vue";
+export { default as ToastCloseIcon } from "./toast/CloseIcon.vue";
+
 export { default as WindowMinimize } from "./titlebar/WindowMinimize.vue";
 export { default as WindowMaximize } from "./titlebar/WindowMaximize.vue";
 export { default as WindowRestore } from "./titlebar/WindowRestore.vue";

@@ -115,7 +115,6 @@ import {
   indexProgress,
   indexProcessed,
   indexTotal,
-  indexErrors,
   indexedFilesCount,
   indexingState,
   indexedDirs,
@@ -130,6 +129,7 @@ import { ImageIcon, SearchIcon, RefreshIcon, PauseIcon, PlayIcon, AddFolderIcon 
 import { batchSize, maxResults, threshold } from "../store";
 import NumberInput from "./NumberInput.vue";
 import { showInfoModal } from "./modals";
+import { showToast } from "../toast";
 import { formatSeconds } from "../utils";
 import RichProgressBar from "./RichProgressBar.vue";
 import DirectoryList from "./DirectoryList.vue";
@@ -149,8 +149,6 @@ const indexStatusText = computed(() => {
   if (state === "indexing") {
     const processed = indexProcessed.value;
     const total = indexTotal.value;
-    const errors = indexErrors.value;
-    if (errors > 0) return t("index_status.indexing_with_errors", { processed, total, errors });
     return t("index_status.indexing", { processed, total });
   }
   return t(`index_status.${state}`, {
@@ -206,7 +204,6 @@ async function handleIndexingButton() {
     if (!resuming) {
       indexProcessed.value = 0;
       indexTotal.value = 0;
-      indexErrors.value = 0;
       indexProgress.value = 0;
     }
 
@@ -229,15 +226,25 @@ async function handleIndexingButton() {
         elapsed: formatSeconds(elapsed_secs),
       });
 
-      if (errors.length > 0) {
-        const lines = errors.map(
-          ([path, err]) =>
-            `\n${t("message.index_result.errors.skipped")}: ${path}\n${t("message.index_result.errors.reason")}: ${err.msg ? t(err.msg) : err.code}`,
-        );
-        summary += `\n\n<b>${t("message.index_result.errors.header", { count: errors.length })}:</b>\n${lines.join("\n")}`;
+      if (errors.length === 0) {
+        showToast(summary, t("message.index_result.complete.title"), "info", true);
+      } else {
+        summary += `\n${t("message.index_result.errors.header", { count: errors.length })}`;
+        showToast(summary, t("message.index_result.complete.title"), "info", true, {
+          label: t("action.show_errors"),
+          onClick: () => {
+            const lines = errors.map(
+              ([path, err]) =>
+                `<b>${t("message.index_result.errors.skipped")}:</b> ${path}\n<b>${t("message.index_result.errors.reason")}:</b> ${err.msg ? t(err.msg) : err.code}`,
+            );
+            showInfoModal(
+              lines.join("\n\n"),
+              t("message.index_result.errors.title", { count: errors.length }),
+            );
+          },
+          closeToast: true,
+        });
       }
-
-      await showInfoModal(summary, t("message.index_result.complete.title"));
     } catch (e) {
       indexingState.value = "idle";
       const err = e as AppError;

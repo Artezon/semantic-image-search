@@ -2,28 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
 
-#[derive(Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum MessageKind {
-    #[default]
-    Info,
-    Error,
-    Warning,
-}
-
 #[derive(Clone, Serialize, Default)]
 pub struct MessagePayload {
-    pub key: String,
-    pub kind: MessageKind,
-    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub params: std::collections::HashMap<String, serde_json::Value>,
+    pub id: String,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub params: HashMap<String, serde_json::Value>,
 }
 
 impl MessagePayload {
-    pub fn new(key: &str, kind: MessageKind) -> Self {
+    pub fn new(id: &str) -> Self {
         Self {
-            key: key.to_string(),
-            kind,
+            id: id.to_string(),
             params: HashMap::new(),
         }
     }
@@ -52,8 +41,8 @@ pub struct ModelStatusPayload {
     pub status: ModelStatus,
     pub status_key: String,
     pub device_text: String,
-    #[serde(skip_serializing_if = "std::collections::HashMap::is_empty")]
-    pub params: std::collections::HashMap<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub params: HashMap<String, serde_json::Value>,
 }
 
 impl ModelStatusPayload {

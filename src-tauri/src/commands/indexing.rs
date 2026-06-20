@@ -1,7 +1,7 @@
 use crate::{
     db::{FileEmbedding, FileType},
     errors::AppError,
-    frontend::{IndexingState, clear_index_status, update_index_status},
+    frontend::{IndexingState, MessagePayload, clear_index_status, update_index_status},
     models::{ModelManifest, VisualSearchModel},
     state::AppState,
 };
@@ -326,7 +326,15 @@ fn indexing(
                                 });
                             }
                             Err(e) => {
-                                errors.push((path.display().to_string(), e));
+                                let err_value = serde_json::to_value(&e).unwrap_or_default();
+                                let msg =
+                                    err_value.get("msg").and_then(|m| m.as_str()).unwrap_or("");
+                                let path_str = path.display().to_string();
+                                MessagePayload::new("indexing_error")
+                                    .param("path", serde_json::json!(path_str))
+                                    .param("msg", serde_json::json!(msg))
+                                    .emit(app_handle);
+                                errors.push((path_str, e));
                             }
                         }
                     }
@@ -338,8 +346,15 @@ fn indexing(
                         .map_err(|e| e.to_string())?;
                 }
                 Err(e) => {
+                    let err_value = serde_json::to_value(&e).unwrap_or_default();
+                    let msg = err_value.get("msg").and_then(|m| m.as_str()).unwrap_or("");
                     for file in chunk {
-                        errors.push((file.path.display().to_string(), e.clone()));
+                        let path_str = file.path.display().to_string();
+                        MessagePayload::new("indexing_error")
+                            .param("path", serde_json::json!(path_str))
+                            .param("msg", serde_json::json!(msg))
+                            .emit(app_handle);
+                        errors.push((path_str, e.clone()));
                     }
                 }
             }

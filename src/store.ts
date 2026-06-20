@@ -45,7 +45,6 @@ export const deviceText = ref("unknown");
 export const indexProgress = ref(0);
 export const indexProcessed = ref(0);
 export const indexTotal = ref(0);
-export const indexErrors = ref(0);
 export const indexedFilesCount = ref<number | null>(null);
 export const indexingState = ref<IndexingState>("idle");
 

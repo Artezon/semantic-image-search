@@ -11,6 +11,13 @@
   --text-failure: darkred;
   --surface-translucent: rgba(239, 241, 245, 0.7);
   --surface-container-translucent: rgba(230, 233, 239, 0.7);
+  --toast-info-bg: rgba(230, 233, 239, 0.8);
+  --toast-success-bg: rgba(181, 226, 199, 0.8);
+  --toast-error-bg: rgba(235, 200, 196, 0.8);
+  --toast-success-border: #2e7d32;
+  --toast-error-border: #961c05;
+  --toast-btn-hover: rgba(0, 0, 0, 0.1);
+  --toast-btn-pressed: rgba(0, 0, 0, 0.18);
   --titlebar-btn-hover: rgba(0, 0, 0, 0.1);
   --titlebar-btn-pressed: rgba(0, 0, 0, 0.2);
   --titlebar-btn-close-hover: rgba(255, 80, 80, 0.4);
@@ -36,6 +43,13 @@
     --text-failure: lightcoral;
     --surface-translucent: rgba(30, 30, 46, 0.5);
     --surface-container-translucent: rgba(24, 24, 37, 0.5);
+    --toast-info-bg: rgba(24, 24, 37, 0.8);
+    --toast-success-bg: rgba(69, 128, 64, 0.8);
+    --toast-error-bg: rgba(86, 16, 0, 0.8);
+    --toast-success-border: #a6e3a1;
+    --toast-error-border: #f38ba8;
+    --toast-btn-hover: rgba(255, 255, 255, 0.1);
+    --toast-btn-pressed: rgba(255, 255, 255, 0.18);
     --titlebar-btn-hover: rgba(255, 255, 255, 0.1);
     --titlebar-btn-pressed: rgba(255, 255, 255, 0.2);
 
@@ -268,4 +282,8 @@ input[type="radio"] {
 .modal-leave-to .modal {
   opacity: 0;
   transform: scale(0.9);
+}
+
+[data-sonner-toaster] {
+  z-index: 2000 !important;
 }

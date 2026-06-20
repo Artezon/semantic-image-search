@@ -1,14 +1,12 @@
 <template>
-  <div :inert="modalStack.length > 0">
-    <TitleBar />
-    <main class="app-container">
-      <AppSidebar />
-      <div class="vertical-divider" />
-      <ResultsPanel />
-    </main>
-  </div>
+  <TitleBar />
+  <main class="app-container" :inert="modalStack.length > 0">
+    <AppSidebar />
+    <div class="vertical-divider" />
+    <ResultsPanel />
+  </main>
   <Teleport to="body">
-    <TransitionGroup name="modal" tag="div" style="display: contents">
+    <TransitionGroup name="modal">
       <component
         v-for="(modal, i) in modalStack"
         :key="i"
@@ -18,6 +16,7 @@
         @close="closeModal()"
       />
     </TransitionGroup>
+    <Toaster position="bottom-right" :expand="true" :visibleToasts="5" />
   </Teleport>
 </template>
 
@@ -39,13 +38,13 @@ import {
   indexProgress,
   indexProcessed,
   indexTotal,
-  indexErrors,
   indexedFilesCount,
   searchResults,
 } from "./store";
 import type { IndexStatus, ModelStatus } from "./types";
 import { useModalStack } from "./composables/useModal";
-import { showInfoModal } from "./components/modals";
+import { Toaster } from "vue-sonner";
+import { showErrorToast } from "./toast";
 
 const { t, locale, availableLocales } = useI18n({ useScope: "global" });
 const appWindow = getCurrentWindow();
@@ -81,23 +80,19 @@ onMounted(async () => {
 // Backend listeners
 async function setupListeners() {
   await listen<{
-    key: string;
-    kind: "info" | "error" | "warning";
+    id: string;
     params?: Record<string, unknown>;
   }>("message", (event) => {
-    const { key, kind, params } = event.payload;
-
-    const title = t(`message.${key}.title`, params || {});
-    const msg = t(`message.${key}.msg`, params || {});
-
-    // Currently shows the same kind of modal for all backend messages
-    const show = {
-      info: showInfoModal,
-      warning: showInfoModal,
-      error: showInfoModal,
-    }[kind];
-
-    show(msg, title);
+    const { id, params } = event.payload;
+    const title = t(`message.${id}.title`, params || {});
+    const p = params || {};
+    const errorMsgStr = typeof p.msg === "string" ? p.msg : "";
+    const filePathStr = typeof p.path === "string" ? p.path : "";
+    const reason = errorMsgStr ? t(errorMsgStr) : "unknown";
+    const displayMsg = filePathStr
+      ? `<b>${t("message.index_result.errors.skipped")}:</b> ${filePathStr}\n<b>${t("message.index_result.errors.reason")}:</b> ${reason}`
+      : reason;
+    showErrorToast(displayMsg, title);
   });
 
   await listen<ModelStatus>("model-status", (event) => {
@@ -114,12 +109,11 @@ async function setupListeners() {
   });
 
   await listen<IndexStatus>("index-status", (event) => {
-    const { state, processed, total, errors } = event.payload;
+    const { state, processed, total } = event.payload;
     indexingState.value = state;
     if (state === "idle") indexProgress.value = 0;
     indexProcessed.value = processed;
     indexTotal.value = total;
-    indexErrors.value = errors;
   });
 
   await listen("clear-results", () => {

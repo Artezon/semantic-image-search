@@ -2,7 +2,9 @@
   <BaseModal :title="title" :is-top="isTop" @close="$emit('close')">
     <p v-html="message" />
     <template #footer>
-      <button class="btn full-width-btn" autofocus @click="$emit('close')">OK</button>
+      <button class="btn full-width-btn" autofocus @click="$emit('close')">
+        {{ $t("action.ok") }}
+      </button>
     </template>
   </BaseModal>
 </template>
