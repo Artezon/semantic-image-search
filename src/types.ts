@@ -15,12 +15,17 @@ export type ModelStatus = {
   status: "neutral" | "success" | "error";
   status_key: string;
   device_text: string;
-  params?: Record<string, string>;
+  error_details: Record<string, unknown>;
 };
 
 export type AppError = {
   code: string;
   detail?: string;
+};
+
+export type BackendMessage = {
+  id: string;
+  params: Record<string, unknown>;
 };
 
 export type IndexingState =

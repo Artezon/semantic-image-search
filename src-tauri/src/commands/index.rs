@@ -1,7 +1,7 @@
 use crate::{
     db::{FileEmbedding, FileType},
     errors::AppError,
-    frontend::{IndexingState, MessagePayload, clear_index_status, update_index_status},
+    frontend::{IndexingState, clear_index_status, send_index_status, send_indexing_error},
     models::{ModelManifest, VisualSearchModel},
     state::AppState,
 };
@@ -143,7 +143,7 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
         if let Err(e) = result {
             state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
             state.indexing_processed.store(0, Ordering::Relaxed);
-            update_index_status(&app_handle, 0, 0, 0, IndexingState::FatalError);
+            send_index_status(&app_handle, IndexingState::FatalError, 0, 0, 0);
             return Err(e);
         }
 
@@ -254,12 +254,12 @@ fn indexing(
         return Ok(());
     }
 
-    update_index_status(
+    send_index_status(
         app_handle,
+        IndexingState::Indexing,
         *processed,
         *total,
         errors.len(),
-        IndexingState::Indexing,
     );
 
     let progress_update_interval = Duration::from_millis(100);
@@ -335,10 +335,7 @@ fn indexing(
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
                                 let path_str = path.display().to_string();
-                                MessagePayload::new("indexing_error")
-                                    .param("path", serde_json::json!(path_str))
-                                    .param("detail", serde_json::json!(detail))
-                                    .emit(app_handle);
+                                send_indexing_error(app_handle, &path_str, detail);
                                 errors.push((path_str, e));
                             }
                         }
@@ -358,21 +355,18 @@ fn indexing(
                         .unwrap_or("");
                     for file in chunk {
                         let path_str = file.path.display().to_string();
-                        MessagePayload::new("indexing_error")
-                            .param("path", serde_json::json!(path_str))
-                            .param("detail", serde_json::json!(detail))
-                            .emit(app_handle);
+                        send_indexing_error(app_handle, &path_str, detail);
                         errors.push((path_str, e.clone()));
                     }
                 }
             }
             if last_progress_update.elapsed() > progress_update_interval {
-                update_index_status(
+                send_index_status(
                     &app_handle,
+                    IndexingState::Indexing,
                     *processed,
                     *total,
                     errors.len(),
-                    IndexingState::Indexing,
                 );
                 last_progress_update = Instant::now();
             }

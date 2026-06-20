@@ -23,7 +23,7 @@ impl MessagePayload {
     }
 
     pub fn emit(&self, app_handle: &AppHandle) {
-        let _ = app_handle.emit("message", self).unwrap();
+        let _ = app_handle.emit(&self.id, self).unwrap();
     }
 }
 
@@ -36,40 +36,6 @@ pub enum ModelStatus {
     Error,
 }
 
-#[derive(Clone, Serialize, Default)]
-pub struct ModelStatusPayload {
-    pub status: ModelStatus,
-    pub status_key: String,
-    pub device_text: String,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub params: HashMap<String, serde_json::Value>,
-}
-
-impl ModelStatusPayload {
-    pub fn new(status: ModelStatus, status_key: &str) -> Self {
-        Self {
-            status,
-            status_key: status_key.to_string(),
-            device_text: String::new(),
-            params: HashMap::new(),
-        }
-    }
-
-    pub fn device(mut self, text: &str) -> Self {
-        self.device_text = text.to_string();
-        self
-    }
-
-    pub fn param(mut self, k: &str, v: serde_json::Value) -> Self {
-        self.params.insert(k.to_string(), v);
-        self
-    }
-
-    pub fn emit(&self, app_handle: &AppHandle) {
-        let _ = app_handle.emit("model-status", self).unwrap();
-    }
-}
-
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum IndexingState {
@@ -79,38 +45,35 @@ pub enum IndexingState {
     FatalError,
 }
 
-#[derive(Clone, Serialize, Default)]
-pub struct IndexingStatusPayload {
-    pub state: IndexingState,
-    pub processed: usize,
-    pub total: usize,
-    pub errors: usize,
+pub fn send_model_status(app_handle: &AppHandle, status: ModelStatus, status_key: &str) {
+    MessagePayload::new("model-status")
+        .param("status", serde_json::json!(status))
+        .param("status_key", serde_json::json!(status_key))
+        .emit(app_handle);
 }
 
-pub fn update_index_status(
+pub fn send_index_status(
     app_handle: &AppHandle,
+    state: IndexingState,
     processed: usize,
     total: usize,
     errors: usize,
-    state: IndexingState,
 ) {
-    let _ = app_handle
-        .emit(
-            "index-status",
-            &IndexingStatusPayload {
-                state,
-                processed,
-                total,
-                errors,
-            },
-        )
-        .unwrap();
+    MessagePayload::new("index-status")
+        .param("state", serde_json::json!(state))
+        .param("processed", serde_json::json!(processed))
+        .param("total", serde_json::json!(total))
+        .param("errors", serde_json::json!(errors))
+        .emit(app_handle);
 }
 
 pub fn clear_index_status(app_handle: &AppHandle) {
-    update_index_status(app_handle, 0, 0, 0, IndexingState::Idle);
+    send_index_status(app_handle, IndexingState::Idle, 0, 0, 0);
 }
 
-// pub fn clear_results(app_handle: &AppHandle) {
-//     let _ = app_handle.emit("clear-results", ()).unwrap();
-// }
+pub fn send_indexing_error(app_handle: &AppHandle, path: &str, detail: &str) {
+    MessagePayload::new("indexing-error")
+        .param("path", serde_json::json!(path))
+        .param("detail", serde_json::json!(detail))
+        .emit(app_handle);
+}

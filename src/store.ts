@@ -40,7 +40,7 @@ loadConfig().then(([current, defaults]) => {
 // Model state
 export const modelStatusKey = ref("not_loaded");
 export const modelStatusColor = ref("var(--text-secondary)");
-export const modelStatusParams = ref<Record<string, string>>({});
+export const modelStatusErr = ref<Record<string, unknown>>({});
 export const deviceText = ref(t("device_unknown"));
 
 // Indexing state

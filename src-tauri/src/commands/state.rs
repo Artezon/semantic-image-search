@@ -1,7 +1,7 @@
 use crate::{
     dylib::preload_libs,
     errors::AppError,
-    frontend::{ModelStatus, ModelStatusPayload},
+    frontend::{MessagePayload, ModelStatus, send_model_status},
     state::{self, AppState, Config},
 };
 use serde_json::Value;
@@ -79,16 +79,18 @@ pub fn get_model_status(app_handle: AppHandle) {
 
     let model = Arc::clone(&state.model_manager.visual_search_models[selected_model_manifest]);
 
-    ModelStatusPayload::new(ModelStatus::Neutral, "loading_libraries").emit(&app_handle);
+    send_model_status(&app_handle, ModelStatus::Neutral, "loading_libraries");
 
     if let Err(e) = preload_libs(&state.data_path.join("lib")) {
-        ModelStatusPayload::new(ModelStatus::Error, "error")
-            .param("error", serde_json::json!(e))
+        MessagePayload::new("model-status")
+            .param("status", serde_json::json!(ModelStatus::Error))
+            .param("status_key", serde_json::json!("error"))
+            .param("error_details", serde_json::json!(e))
             .emit(&app_handle);
         return;
     }
 
-    ModelStatusPayload::new(ModelStatus::Neutral, "loading_model").emit(&app_handle);
+    send_model_status(&app_handle, ModelStatus::Neutral, "loading_model");
 
     let load_result = (|| {
         let mut model_context = model.write().unwrap();
@@ -96,12 +98,23 @@ pub fn get_model_status(app_handle: AppHandle) {
         model_context.load_vision_encoder()
     })();
 
-    let result = match load_result {
-        Ok(()) => ModelStatusPayload::new(ModelStatus::Success, "loaded")
-            .device(&model.read().unwrap().device_string()),
-        Err(e) => ModelStatusPayload::new(ModelStatus::Error, "error")
-            .param("error", serde_json::json!(e)),
-    };
-
-    result.emit(&app_handle);
+    match load_result {
+        Ok(()) => {
+            MessagePayload::new("model-status")
+                .param("status", serde_json::json!(ModelStatus::Success))
+                .param("status_key", serde_json::json!("loaded"))
+                .param(
+                    "device_text",
+                    serde_json::json!(model.read().unwrap().device_string()),
+                )
+                .emit(&app_handle);
+        }
+        Err(e) => {
+            MessagePayload::new("model-status")
+                .param("status", serde_json::json!(ModelStatus::Error))
+                .param("status_key", serde_json::json!("error"))
+                .param("error_details", serde_json::json!(e))
+                .emit(&app_handle);
+        }
+    }
 }

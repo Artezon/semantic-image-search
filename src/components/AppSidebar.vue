@@ -113,7 +113,7 @@ import {
   modelStatusKey,
   modelStatusColor,
   deviceText,
-  modelStatusParams,
+  modelStatusErr,
   indexProgress,
   indexProcessed,
   indexTotal,
@@ -140,8 +140,8 @@ const { t } = useI18n({ useScope: "global" });
 
 const modelStatusText = computed(() => {
   const key = modelStatusKey.value as string;
-  const params = modelStatusParams.value;
-  if (key === "error") return params.error || "";
+  const params = modelStatusErr.value;
+  if (key === "error") return params || "";
   return t(`model_status.${key}`, params);
 });
 
