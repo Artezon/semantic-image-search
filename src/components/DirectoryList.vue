@@ -25,7 +25,7 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import { indexedDirs, indexedFilesCount } from "../store";
+import { indexedDirs } from "../store";
 import { CloseIcon } from "./icons";
 import { VueDraggable } from "vue-draggable-plus";
 import ScrollFadeContainer from "./ScrollFadeContainer.vue";
@@ -52,8 +52,6 @@ async function saveDirectoryOrder() {
 
 async function removeDirectory(path: string) {
   await showConfirmRemoveFolderModal(path);
-  indexedDirs.value = await invoke("get_dirs");
-  indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
 }
 
 onMounted(loadDirs);

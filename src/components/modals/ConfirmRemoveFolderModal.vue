@@ -25,11 +25,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import BaseModal from "./BaseModal.vue";
-import { indexingState } from "../../store";
+import { indexedDirs, indexedFilesCount, indexingState } from "../../store";
+import { pauseIndexing, startOrResumeIndexing } from "../../indexing";
 
 const { t } = useI18n({ useScope: "global" });
 
@@ -46,13 +47,23 @@ const title = ref<string | null>(t("confirm_remove_folder.modal.title"));
 async function onConfirm() {
   removing.value = true;
   title.value = null;
-  try {
-    if (indexingState.value === "indexing" || indexingState.value === "preparing") {
-      indexingState.value = "pausing";
-      await invoke("pause_indexing");
-    }
+  const isStarted = indexingState.value === "indexing" || indexingState.value === "preparing";
+  if (isStarted) {
+    await pauseIndexing();
+    const unwatch = watch(indexingState, async (newState) => {
+      if (newState === "paused") {
+        unwatch();
+        await invoke("remove_directory", { path: props.folderPath });
+        indexedDirs.value = await invoke("get_dirs");
+        indexedFilesCount.value = await invoke<number>("get_indexed_count");
+        emit("close");
+        await startOrResumeIndexing();
+      }
+    });
+  } else {
     await invoke("remove_directory", { path: props.folderPath });
-  } finally {
+    indexedDirs.value = await invoke("get_dirs");
+    indexedFilesCount.value = await invoke<number>("get_indexed_count");
     emit("close");
   }
 }

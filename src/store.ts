@@ -2,6 +2,7 @@ import { ref, watch, reactive, type Ref } from "vue";
 import type { Config, IndexingState, SearchResult } from "./types";
 import { invoke } from "@tauri-apps/api/core";
 import { i18n } from "./i18n";
+
 const { t } = i18n.global;
 
 // Config state

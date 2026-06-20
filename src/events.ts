@@ -11,7 +11,7 @@ import {
   searchResults,
 } from "./store";
 import type { BackendMessage, IndexStatus, ModelStatus } from "./types";
-import { showErrorToast } from "./toast";
+import { showToast } from "./toast";
 import { i18n } from "./i18n";
 
 export async function setupTauriListeners() {
@@ -45,7 +45,7 @@ export async function setupTauriListeners() {
     const path = String(p.path || "");
     const reason = t(String(p.detail || "error.unknown"));
     const msg = `${t("error.detail.skipped", { detail: path })}\n${t("error.detail.reason", { detail: reason })}`;
-    showErrorToast(msg, title);
+    showToast(msg, title, "error");
   });
 
   await listen("clear-results", () => {

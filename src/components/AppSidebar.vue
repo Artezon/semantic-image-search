@@ -103,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -124,15 +124,14 @@ import {
   queryImage,
   searchType,
 } from "../store";
-import type { AppError, IndexingResult, SearchResult } from "../types";
+import type { AppError, SearchResult } from "../types";
 import { ImageIcon, SearchIcon, RefreshIcon, PauseIcon, PlayIcon, AddFolderIcon } from "./icons";
 import { batchSize, maxResults, threshold } from "../store";
 import NumberInput from "./NumberInput.vue";
 import { showInfoModal } from "./modals";
-import { showToast } from "../toast";
-import { formatSeconds } from "../utils";
 import RichProgressBar from "./RichProgressBar.vue";
 import DirectoryList from "./DirectoryList.vue";
+import { pauseIndexing, startOrResumeIndexing } from "../indexing";
 
 const { t } = useI18n({ useScope: "global" });
 
@@ -178,12 +177,42 @@ async function addDirectory() {
   try {
     await invoke("add_directory", { path });
     indexedDirs.value = await invoke("get_dirs");
+
+    if (indexingState.value === "paused") return;
+    const isStarted = indexingState.value === "indexing" || indexingState.value === "preparing";
+    if (isStarted) {
+      await pauseIndexing();
+      const unwatch = watch(indexingState, async (newState) => {
+        if (newState === "paused") {
+          unwatch();
+          await startOrResumeIndexing();
+        }
+      });
+    } else if (indexingState.value === "idle") {
+      await startOrResumeIndexing();
+    }
   } catch (e) {
+    indexingState.value = "idle";
     const err = e as AppError;
     await showInfoModal(
       t(`error.${err.code}`, { detail: err.detail }),
       t("message.invalid_directory.title"),
     );
+  }
+}
+
+async function handleIndexingButton() {
+  if (indexingState.value === "idle" || indexingState.value === "paused") {
+    if (indexedDirs.value.length === 0) {
+      await showInfoModal(
+        t("message.no_index.msg"),
+        t("indexing.error.empty_library.modal.header"),
+      );
+      return;
+    }
+    await startOrResumeIndexing();
+  } else if (indexingState.value === "indexing" || indexingState.value === "preparing") {
+    await pauseIndexing();
   }
 }
 
@@ -198,84 +227,6 @@ async function browseImage() {
     ],
   });
   if (typeof path === "string") queryImage.value = path;
-}
-
-async function handleIndexingButton() {
-  if (indexingState.value === "indexing" || indexingState.value === "preparing") {
-    indexingState.value = "pausing";
-    await invoke("pause_indexing");
-  } else if (indexingState.value === "idle" || indexingState.value === "paused") {
-    if (indexedDirs.value.length === 0) {
-      await showInfoModal(
-        t("message.no_index.msg"),
-        t("indexing.error.empty_library.modal.header"),
-      );
-      return;
-    }
-
-    const resuming = indexingState.value === "paused";
-    indexingState.value = "preparing";
-    if (!resuming) {
-      indexProcessed.value = 0;
-      indexTotal.value = 0;
-      indexProgress.value = 0;
-    }
-
-    try {
-      const result = await invoke<IndexingResult>("index_directories");
-      indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
-
-      const { processed, total, elapsed_secs, was_paused, errors } = result;
-
-      if (was_paused) {
-        indexingState.value = "paused";
-        return;
-      }
-
-      indexingState.value = "idle";
-
-      if (total === 0) {
-        showToast(
-          t("indexing.complete.toast.up_to_date.msg"),
-          t("indexing.complete.toast.up_to_date.header"),
-          "info",
-          false,
-        );
-        return;
-      }
-
-      let summary = t("indexing.complete.toast.msg", {
-        processed,
-        total,
-        elapsed: formatSeconds(elapsed_secs),
-      });
-
-      if (errors.length === 0) {
-        showToast(summary, t("indexing.complete.toast.header"), "info", true);
-      } else {
-        summary += `\n${t("indexing.complete.toast.errors", { count: errors.length })}`;
-        showToast(summary, t("indexing.complete.toast.header"), "info", true, {
-          label: t("action.show_errors"),
-          onClick: () => {
-            const lines = errors.map(([path, err]) => {
-              const reason = err.detail ? t(err.detail) : err.code;
-              return `${t("error.detail.skipped", { detail: path })}\n${t("error.detail.reason", { detail: reason })}`;
-            });
-            showInfoModal(
-              lines.join("\n\n"),
-              t("indexing.complete.modal.errors.header", { count: errors.length }),
-            );
-          },
-          closeToast: true,
-        });
-      }
-    } catch (e) {
-      indexingState.value = "idle";
-      const err = e as AppError;
-      const errorMsg = t(`error.${err.code}`, { detail: err.detail });
-      await showInfoModal(errorMsg, t("indexing.error.fatal.modal.header"));
-    }
-  }
 }
 
 async function search() {

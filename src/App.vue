@@ -21,6 +21,7 @@ import ModalsContainer from "./components/modals/ModalsContainer.vue";
 import { indexProgress, indexProcessed, indexTotal, indexedFilesCount } from "./store";
 import { modalStack } from "./components/modals";
 import { Toaster } from "vue-sonner";
+import { startOrResumeIndexing } from "./indexing";
 
 const appWindow = getCurrentWindow();
 
@@ -59,8 +60,10 @@ onMounted(async () => {
   await setupTauriListeners();
 
   await invoke("apply_locale");
-  indexedFilesCount.value = (await invoke("get_indexed_count")) as number;
+  indexedFilesCount.value = await invoke<number>("get_indexed_count");
   await invoke("get_model_status");
+
+  await startOrResumeIndexing();
 });
 
 watch([indexProcessed, indexTotal], ([processed, total]) => {
