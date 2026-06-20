@@ -39,6 +39,15 @@ onMounted(async () => {
     event.preventDefault();
   };
 
+  // Prevent refreshing (e.g. F5, Ctrl+R)
+  if (import.meta.env.PROD) {
+    document.onkeydown = (event) => {
+      if (event.key === "F5" || (event.ctrlKey && event.key.toLowerCase() === "r")) {
+        event.preventDefault();
+      }
+    };
+  }
+
   // Show window after a short delay to prevent flash
   await new Promise(requestAnimationFrame);
   await new Promise((r) => setTimeout(r, 100));
