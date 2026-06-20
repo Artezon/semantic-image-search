@@ -104,8 +104,6 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-
-const appVersion = __APP_VERSION__;
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -137,6 +135,8 @@ import RichProgressBar from "./RichProgressBar.vue";
 import DirectoryList from "./DirectoryList.vue";
 
 const { t } = useI18n({ useScope: "global" });
+
+const appVersion = __APP_VERSION__.replace(/\.0(-|$)/, "$1");
 
 const modelStatusText = computed(() => {
   const key = modelStatusKey.value as string;
