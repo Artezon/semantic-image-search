@@ -34,7 +34,7 @@ pub enum AppError {
     Generic {
         detail: String,
     },
-    // Unknown,
+    Unknown,
 }
 
 impl AppError {

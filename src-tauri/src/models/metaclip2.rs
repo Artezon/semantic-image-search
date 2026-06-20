@@ -189,7 +189,12 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
 
         let batch_size = batch.len();
         if batch_size == 0 {
-            return Ok(vec![]);
+            let result: Vec<FileEmbedResult> = paths
+                .iter()
+                .zip(errors.iter())
+                .map(|(path, err)| (path.clone(), Err(err.clone().unwrap_or(AppError::Unknown))))
+                .collect();
+            return Ok(result);
         }
 
         // Assemble successful images into a contiguous batch tensor
