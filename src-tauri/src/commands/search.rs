@@ -61,7 +61,7 @@ pub fn search(
             let mut query_img_embed = selected_visual_model
                 .write()
                 .unwrap()
-                .embed_images(&[path])?;
+                .embed_images(&[path], None)?;
             if query_img_embed.is_empty() {
                 return Err(AppError::InvalidImagePath);
             }

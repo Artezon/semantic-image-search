@@ -11,7 +11,11 @@ use crate::{
     models::{EmbedResult, FilesEmbedResult},
 };
 use ndarray::{Array1, Array2, Array4, ArrayView2, Axis};
-use ort::{inputs, session::Session, value::TensorRef};
+use ort::{
+    inputs,
+    session::{NoSelectedOutputs, RunOptions, Session},
+    value::TensorRef,
+};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::path::{Path, PathBuf};
 use tokenizers::tokenizer::Tokenizer;
@@ -160,7 +164,11 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
         self.vision_session.is_some()
     }
 
-    fn embed_images(&mut self, paths: &[PathBuf]) -> FilesEmbedResult {
+    fn embed_images(
+        &mut self,
+        paths: &[PathBuf],
+        run_options: Option<&RunOptions<NoSelectedOutputs>>,
+    ) -> FilesEmbedResult {
         if self.vision_session.is_none() {
             return Err(AppError::ModelNotReady);
         }
@@ -201,9 +209,15 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
         let flat: Vec<f32> = batch.into_iter().flatten().collect();
         let pixel_tensor = Array4::from_shape_vec((batch_size, 3, h, w), flat)?;
 
-        let outputs = self.vision_session.as_mut().unwrap().run(inputs![
+        let input_values = inputs![
             "pixel_values" => TensorRef::from_array_view(pixel_tensor.view())?,
-        ])?;
+        ];
+        let session = self.vision_session.as_mut().unwrap();
+        let outputs = if let Some(opts) = run_options {
+            session.run_with_options(input_values, opts)?
+        } else {
+            session.run(input_values)?
+        };
 
         let embed_output = &outputs["image_embeds"];
         let (shape, raw_data) = embed_output.try_extract_tensor::<f32>()?;
@@ -228,7 +242,12 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
     }
 
     #[cfg(feature = "video")]
-    fn embed_video(&mut self, path: &Path, num_frames: u32) -> FilesEmbedResult {
+    fn embed_video(
+        &mut self,
+        path: &Path,
+        num_frames: u32,
+        run_options: Option<&RunOptions<NoSelectedOutputs>>,
+    ) -> FilesEmbedResult {
         if self.vision_session.is_none() {
             return Err(AppError::ModelNotReady);
         }
@@ -251,9 +270,15 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
             }
         })?;
 
-        let outputs = self.vision_session.as_mut().unwrap().run(inputs![
+        let input_values = inputs![
             "pixel_values" => TensorRef::from_array_view(pixel_tensor.view())?,
-        ])?;
+        ];
+        let session = self.vision_session.as_mut().unwrap();
+        let outputs = if let Some(opts) = run_options {
+            session.run_with_options(input_values, opts)?
+        } else {
+            session.run(input_values)?
+        };
 
         let embed_output = &outputs["image_embeds"];
         let (shape, raw_data) = embed_output.try_extract_tensor::<f32>()?;

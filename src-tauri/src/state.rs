@@ -1,12 +1,13 @@
 use crate::db::Database;
 use crate::errors::fatal_error;
 use crate::models;
+use ort::session::{NoSelectedOutputs, RunOptions};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
 use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::{Arc, RwLock};
 
 pub const PATH_CONFIG: &'static str = "config.json";
 pub const PATH_DB: &'static str = "index.db";
@@ -36,6 +37,7 @@ pub struct AppState {
     pub indexing_paused: AtomicBool,
     pub indexing_elapsed_secs: AtomicU64,
     pub indexing_processed: AtomicU64,
+    pub indexing_run_options: RwLock<Option<Arc<RunOptions<NoSelectedOutputs>>>>,
 }
 
 impl AppState {
@@ -87,6 +89,7 @@ impl AppState {
             indexing_paused: AtomicBool::new(false),
             indexing_elapsed_secs: AtomicU64::new(0),
             indexing_processed: AtomicU64::new(0),
+            indexing_run_options: RwLock::new(None),
         }
     }
 

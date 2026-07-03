@@ -5,6 +5,7 @@ use crate::{
     models::{ModelManifest, VisualSearchModel},
     state::AppState,
 };
+use ort::session::RunOptions;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -139,6 +140,7 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
 
         state.is_indexing.store(false, Ordering::Relaxed);
         state.indexing_paused.store(false, Ordering::Relaxed);
+        *state.indexing_run_options.write().unwrap() = None;
 
         if let Err(e) = result {
             state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
@@ -304,14 +306,29 @@ fn indexing(
             let path_to_id: HashMap<&PathBuf, i64> =
                 chunk.iter().map(|f| (&f.path, f.id)).collect();
             let paths: Vec<PathBuf> = chunk.iter().map(|f| f.path.clone()).collect();
+
+            let run_options =
+                Arc::new(
+                    RunOptions::new().map_err(|e| AppError::ModelInferenceFailed {
+                        detail: e.to_string(),
+                    })?,
+                );
+            *state.indexing_run_options.write().unwrap() = Some(run_options.clone());
+
             let result = match file_type {
-                FileType::IMG => selected_visual_model.write().unwrap().embed_images(&paths),
-                #[cfg(feature = "video")]
-                FileType::VID => selected_visual_model
+                FileType::IMG => selected_visual_model
                     .write()
                     .unwrap()
-                    .embed_video(&chunk[0].path, num_frames),
+                    .embed_images(&paths, Some(&run_options)),
+                #[cfg(feature = "video")]
+                FileType::VID => selected_visual_model.write().unwrap().embed_video(
+                    &chunk[0].path,
+                    num_frames,
+                    Some(&run_options),
+                ),
             };
+
+            *state.indexing_run_options.write().unwrap() = None;
 
             if state.indexing_paused.load(Ordering::Relaxed) {
                 return Ok(());
@@ -390,5 +407,10 @@ fn indexing(
 #[command]
 pub async fn pause_indexing(state: State<'_, AppState>) -> Result<(), ()> {
     state.indexing_paused.store(true, Ordering::Relaxed);
+    if let Ok(guard) = state.indexing_run_options.read() {
+        if let Some(options) = guard.as_ref() {
+            let _ = options.terminate();
+        }
+    }
     Ok(())
 }

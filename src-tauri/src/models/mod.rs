@@ -6,6 +6,7 @@ pub mod video;
 
 use crate::errors::AppError;
 use ndarray::Array1;
+use ort::session::{NoSelectedOutputs, RunOptions};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -80,10 +81,19 @@ pub trait VisualEncoder: Model {
     // fn unload_vision_encoder(&mut self);
     fn is_vision_encoder_loaded(&self) -> bool;
 
-    fn embed_images(&mut self, paths: &[PathBuf]) -> FilesEmbedResult;
+    fn embed_images(
+        &mut self,
+        paths: &[PathBuf],
+        run_options: Option<&RunOptions<NoSelectedOutputs>>,
+    ) -> FilesEmbedResult;
 
     #[cfg(feature = "video")]
-    fn embed_video(&mut self, path: &Path, num_frames: u32) -> FilesEmbedResult;
+    fn embed_video(
+        &mut self,
+        path: &Path,
+        num_frames: u32,
+        run_options: Option<&RunOptions<NoSelectedOutputs>>,
+    ) -> FilesEmbedResult;
 }
 
 pub trait VisualSearchModel: TextEncoder + VisualEncoder {}
