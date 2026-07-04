@@ -24,9 +24,9 @@ pub struct IndexingResult {
     errors: Vec<(String, AppError)>,
 }
 
-#[cfg(not(feature = "heif"))]
-static IMAGE_EXTENSIONS: [&str; 8] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif"];
-#[cfg(feature = "heif")]
+#[cfg(not(feature = "advanced-image-formats"))]
+static IMAGE_EXTENSIONS: [&str; 8] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff"];
+#[cfg(feature = "advanced-image-formats")]
 static IMAGE_EXTENSIONS: [&str; 10] = [
     "jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif", "heic", "heif",
 ];

@@ -224,7 +224,7 @@ async function browseImage() {
     filters: [
       {
         name: "Images",
-        extensions: ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif"],
+        extensions: ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif", "heic", "heif"],
       },
     ],
   });

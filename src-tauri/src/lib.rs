@@ -12,15 +12,18 @@ mod utils;
 #[cfg(feature = "video")]
 mod video;
 
-#[cfg(feature = "heif")]
-use libheif_rs::integration::image::register_all_decoding_hooks;
+#[cfg(feature = "advanced-image-formats")]
+use libheif_rs::integration::image as libheif_image;
 use tauri::{Builder, Manager, WebviewUrl, WebviewWindowBuilder, webview, window};
 use tauri_plugin_window_state::StateFlags;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    #[cfg(feature = "heif")]
-    register_all_decoding_hooks();
+    #[cfg(feature = "advanced-image-formats")]
+    {
+        libheif_image::register_heif_decoding_hook();
+        libheif_image::register_heic_decoding_hook();
+    }
 
     Builder::default()
         .setup(|app| {
