@@ -36,7 +36,6 @@ pub struct AppState {
     pub is_indexing: AtomicBool,
     pub indexing_paused: AtomicBool,
     pub indexing_elapsed_secs: AtomicU64,
-    pub indexing_processed: AtomicU64,
     pub indexing_run_options: RwLock<Option<Arc<RunOptions<NoSelectedOutputs>>>>,
 }
 
@@ -88,7 +87,6 @@ impl AppState {
             data_path,
             indexing_paused: AtomicBool::new(false),
             indexing_elapsed_secs: AtomicU64::new(0),
-            indexing_processed: AtomicU64::new(0),
             indexing_run_options: RwLock::new(None),
         }
     }

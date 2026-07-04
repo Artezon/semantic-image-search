@@ -108,8 +108,9 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
         state.is_indexing.store(true, Ordering::Relaxed);
         state.indexing_paused.store(false, Ordering::Relaxed);
 
-        let mut processed = state.indexing_processed.load(Ordering::Relaxed) as usize;
         let mut total = 0usize;
+        let mut processed = 0usize;
+        let mut skipped = 0usize;
         let mut errors: Vec<(String, AppError)> = vec![];
 
         let result = indexing(
@@ -120,6 +121,7 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
             selected_visual_model,
             &mut total,
             &mut processed,
+            &mut skipped,
             &mut errors,
         );
 
@@ -130,12 +132,8 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
             state
                 .indexing_elapsed_secs
                 .store(elapsed_secs, Ordering::Relaxed);
-            state
-                .indexing_processed
-                .store(processed as u64, Ordering::Relaxed);
         } else {
             state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
-            state.indexing_processed.store(0, Ordering::Relaxed);
         }
 
         state.is_indexing.store(false, Ordering::Relaxed);
@@ -144,7 +142,6 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
 
         if let Err(e) = result {
             state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
-            state.indexing_processed.store(0, Ordering::Relaxed);
             send_index_status(&app_handle, IndexingState::FatalError, 0, 0, 0);
             return Err(e);
         }
@@ -169,6 +166,7 @@ fn indexing(
     selected_visual_model: Arc<RwLock<dyn VisualSearchModel>>,
     total: &mut usize,
     processed: &mut usize,
+    skipped: &mut usize,
     errors: &mut Vec<(String, AppError)>,
 ) -> Result<(), AppError> {
     let batch_size = state.config.read().unwrap().batch_size;
@@ -211,6 +209,8 @@ fn indexing(
     #[cfg(feature = "video")]
     let mut videos_to_index: Vec<File> = vec![];
 
+    let all_files = all_files_db.len();
+
     for file in all_files_db {
         if state.indexing_paused.load(Ordering::Relaxed) {
             return Ok(());
@@ -246,21 +246,21 @@ fn indexing(
                 }),
                 _ => {}
             }
+            *total += 1;
+        } else {
+            *skipped += 1;
         }
 
-        *total = *processed + images_to_index.len();
-        #[cfg(feature = "video")]
+        // Show file scanning progress only if wasn't resumed from pause
+        if state.indexing_elapsed_secs.load(Ordering::Relaxed) == 0
+            && last_progress_update.elapsed() > progress_update_interval
         {
-            *total += videos_to_index.len();
-        }
-
-        if *processed == 0 && last_progress_update.elapsed() > progress_update_interval {
             send_index_status(
                 app_handle,
                 IndexingState::Preparing,
-                *processed,
-                *total,
-                errors.len(),
+                *skipped,
+                all_files,
+                0usize,
             );
             last_progress_update = Instant::now();
         }
@@ -273,9 +273,9 @@ fn indexing(
     send_index_status(
         app_handle,
         IndexingState::Indexing,
-        *processed,
-        *total,
-        errors.len(),
+        *skipped,
+        all_files,
+        0usize,
     );
 
     let file_lists = [
@@ -393,8 +393,8 @@ fn indexing(
                 send_index_status(
                     &app_handle,
                     IndexingState::Indexing,
-                    *processed,
-                    *total,
+                    *processed + *skipped,
+                    all_files,
                     errors.len(),
                 );
                 last_progress_update = Instant::now();

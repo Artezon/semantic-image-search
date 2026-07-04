@@ -58,7 +58,6 @@ pub async fn add_directory(state: State<'_, AppState>, path: String) -> Result<(
 
 #[command]
 pub async fn remove_directory(state: State<'_, AppState>, path: String) -> Result<(), AppError> {
-    state.indexing_processed.store(0, Ordering::Relaxed);
     state.indexing_elapsed_secs.store(0, Ordering::Relaxed);
     state.db.remove_directory(&path).map_err(AppError::generic)
 }
