@@ -1,8 +1,7 @@
 ## Work in progress
 
-To try it out, download here (provided AI model is needed for this app to work)
-- Without CUDA support: https://drive.google.com/drive/folders/1VHO1Z3KKU0QYjBmSLoATshQYAd8DJ81e (~2 GB)
-- With CUDA support: https://drive.google.com/drive/folders/1lXXM110s2xlLiaUip_S_hWCdYFgoormH (~3 GB)
+To try it out, download from the link below. AI model that is needed for this app to work is bundled.<br/>
+https://drive.google.com/drive/folders/1N93bLdlH7F-Ukzs0XBieRbSYU19azzwm (~2 GB)
 
 Windows - supported<br>
 Linux - soon<br>
