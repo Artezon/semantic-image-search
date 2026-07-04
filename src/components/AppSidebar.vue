@@ -28,7 +28,7 @@
         <NumberInput v-model="batchSize" :min="1" :max="64" />
       </div>
 
-      <button class="btn full-width-btn" @click="handleIndexingButton">
+      <button class="btn full-width-btn" :disabled="!modelLoaded" @click="handleIndexingButton">
         <RichProgressBar
           :progress="indexingState !== 'idle' ? indexProgress : 1"
           :animated="indexingState !== 'idle' && indexProgress > 0"
@@ -94,7 +94,7 @@
         <NumberInput v-model="threshold" :min="0" :max="1" :step="0.01" />
       </div>
 
-      <button class="btn primary full-width-btn" @click="search">
+      <button class="btn primary full-width-btn" :disabled="!modelLoaded" @click="search">
         <SearchIcon />
         <span>{{ $t("sidebar.search") }}</span>
       </button>
@@ -136,6 +136,8 @@ import { pauseIndexing, startOrResumeIndexing } from "../indexing";
 const { t } = useI18n({ useScope: "global" });
 
 const appVersion = __APP_VERSION__.replace(/\.0(-|$)/, "$1");
+
+const modelLoaded = computed(() => modelStatusKey.value === "loaded");
 
 const modelStatusText = computed(() => {
   const key = modelStatusKey.value as string;
