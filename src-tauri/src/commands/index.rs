@@ -25,7 +25,7 @@ pub struct IndexingResult {
 }
 
 #[cfg(not(feature = "advanced-image-formats"))]
-static IMAGE_EXTENSIONS: [&str; 8] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff"];
+static IMAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff"];
 #[cfg(feature = "advanced-image-formats")]
 static IMAGE_EXTENSIONS: [&str; 10] = [
     "jpg", "jpeg", "png", "bmp", "gif", "webp", "tiff", "avif", "heic", "heif",
@@ -170,6 +170,7 @@ fn indexing(
     errors: &mut Vec<(String, AppError)>,
 ) -> Result<(), AppError> {
     let batch_size = state.config.read().unwrap().batch_size;
+    #[cfg(feature = "video")]
     let num_frames = state.config.read().unwrap().video_frames;
 
     let progress_update_interval = Duration::from_millis(100);

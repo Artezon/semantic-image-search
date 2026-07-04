@@ -1,5 +1,6 @@
 use crate::errors::AppError;
 use crate::utils::open_image_as_rgb;
+#[cfg(feature = "video")]
 use crate::video::extract_video_frames;
 use image::DynamicImage;
 use image::codecs::jpeg::JpegEncoder;
@@ -53,7 +54,7 @@ fn generate_video_thumbnail(path: &PathBuf) -> Result<ThumbnailResult, AppError>
 #[cfg(not(feature = "video"))]
 fn generate_video_thumbnail(_path: &PathBuf) -> Result<ThumbnailResult, AppError> {
     Err(AppError::VideoReadFailed {
-        msg: "video_support_disabled".to_string(),
+        detail: "video_support_disabled".to_string(),
     })
 }
 

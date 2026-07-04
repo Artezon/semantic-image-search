@@ -1,4 +1,3 @@
-#[cfg(feature = "video")]
 use crate::models::common::clip_prepare_rgb;
 use crate::models::{
     EmbeddingKind, Model, ModelManifest, TextEncoder, TokenizedText, VisualEncoder,

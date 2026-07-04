@@ -3,8 +3,11 @@ pub mod metaclip2;
 
 use crate::errors::AppError;
 use crate::utils::{l2_normalize, open_image_as_rgb};
+#[cfg(feature = "video")]
 use crate::video::extract_video_frames;
-use ndarray::{Array1, Array2, Axis};
+#[cfg(feature = "video")]
+use ndarray::Axis;
+use ndarray::{Array1, Array2};
 use ort::session::{NoSelectedOutputs, RunOptions};
 use rayon::prelude::*;
 use std::collections::HashMap;
