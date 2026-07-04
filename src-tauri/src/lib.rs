@@ -9,6 +9,8 @@ mod frontend;
 mod models;
 mod state;
 mod utils;
+#[cfg(feature = "video")]
+mod video;
 
 #[cfg(feature = "heif")]
 use libheif_rs::integration::image::register_all_decoding_hooks;
@@ -25,7 +27,7 @@ pub fn run() {
             let app_state = state::AppState::new(app.handle());
 
             #[cfg(feature = "video")]
-            models::video::set_ffmpeg_path(app_state.data_path.join("lib/ffmpeg.exe"));
+            video::set_ffmpeg_path(app_state.data_path.join("lib/ffmpeg.exe"));
 
             app.manage(app_state);
 

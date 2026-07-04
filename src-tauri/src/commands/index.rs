@@ -337,8 +337,9 @@ fn indexing(
             match result {
                 Ok(emb_results) => {
                     let mut embeddings: Vec<FileEmbedding> = vec![];
-                    for (path, emb_res) in emb_results {
-                        let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+                    for file_result in emb_results {
+                        let metadata =
+                            std::fs::metadata(&file_result.path).map_err(|e| e.to_string())?;
                         let modified_at = metadata
                             .modified()
                             .map_err(|e| e.to_string())?
@@ -347,10 +348,10 @@ fn indexing(
                             .as_millis() as i64;
                         let size = metadata.len() as i64;
 
-                        match emb_res {
+                        match file_result.embedding {
                             Ok(emb) => {
                                 embeddings.push(FileEmbedding {
-                                    file_id: *path_to_id.get(&path).unwrap(),
+                                    file_id: *path_to_id.get(&file_result.path).unwrap(),
                                     file_mtime: modified_at,
                                     file_size: size,
                                     embedding: emb.to_vec(),
@@ -362,7 +363,7 @@ fn indexing(
                                     .get("detail")
                                     .and_then(|m| m.as_str())
                                     .unwrap_or("");
-                                let path_str = path.display().to_string();
+                                let path_str = file_result.path.display().to_string();
                                 send_indexing_error(app_handle, &path_str, detail);
                                 errors.push((path_str, e));
                             }

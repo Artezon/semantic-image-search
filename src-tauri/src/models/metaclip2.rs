@@ -1,22 +1,18 @@
 #[cfg(feature = "video")]
 use crate::models::common::clip_prepare_rgb;
 use crate::models::{
-    EmbeddingKind, FileEmbedResult, Model, ModelManifest, TextEncoder, VisualEncoder,
+    EmbeddingKind, Model, ModelManifest, TextEncoder, TokenizedText, VisualEncoder,
     VisualSearchModel,
-    common::{build_session, build_tokenizer, clip_prepare_image},
+    common::{build_session, build_tokenizer},
 };
 use crate::utils::l2_normalize;
-use crate::{
-    errors::AppError,
-    models::{EmbedResult, FilesEmbedResult},
-};
-use ndarray::{Array1, Array2, Array4, ArrayView2, Axis};
+use crate::{errors::AppError, models::EmbedResult};
+use ndarray::{Array2, Array4, ArrayView2, Axis};
 use ort::{
     inputs,
     session::{NoSelectedOutputs, RunOptions, Session},
     value::TensorRef,
 };
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::path::{Path, PathBuf};
 use tokenizers::tokenizer::Tokenizer;
 
@@ -107,35 +103,46 @@ impl TextEncoder for MetaCLIP2B16_384Model {
         self.text_session.is_some() && self.tokenizer.is_some()
     }
 
-    fn embed_text(&mut self, text: &str) -> EmbedResult {
+    fn tokenize_text(&self, text: &str) -> Result<TokenizedText, AppError> {
         let encoding = self
             .tokenizer
             .as_ref()
             .ok_or(AppError::ModelNotReady)?
             .encode(text, true)?;
 
-        let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&id| id as i64).collect();
+        let input_ids: Vec<i64> = encoding.get_ids().iter().map(|&x| x as i64).collect();
         let attention_mask: Vec<i64> = encoding
             .get_attention_mask()
             .iter()
-            .map(|&m| m as i64)
+            .map(|&x| x as i64)
             .collect();
 
         let seq_len = input_ids.len();
 
-        let input_ids_arr = Array2::from_shape_vec((1, seq_len), input_ids)?;
-        let attention_mask_arr = Array2::from_shape_vec((1, seq_len), attention_mask)?;
+        Ok(TokenizedText {
+            input_ids: Array2::from_shape_vec((1, seq_len), input_ids)?,
+            attention_mask: Array2::from_shape_vec((1, seq_len), attention_mask)?,
+        })
+    }
 
-        let outputs = self.text_session.as_mut().unwrap().run(inputs![
-            "input_ids" => TensorRef::from_array_view(input_ids_arr.view())?,
-            "attention_mask" => TensorRef::from_array_view(attention_mask_arr.view())?,
-        ])?;
-
+    fn infer_text_embeddings(
+        &mut self,
+        tokens: TokenizedText,
+        run_options: Option<&RunOptions<NoSelectedOutputs>>,
+    ) -> EmbedResult {
+        let input_values = inputs![
+            "input_ids" => TensorRef::from_array_view(tokens.input_ids.view())?,
+            "attention_mask" => TensorRef::from_array_view(tokens.attention_mask.view())?,
+        ];
+        let session = self.text_session.as_mut().ok_or(AppError::ModelNotReady)?;
+        let outputs = if let Some(opts) = run_options {
+            session.run_with_options(input_values, opts)?
+        } else {
+            session.run(input_values)?
+        };
         let embed_output = &outputs["text_embeds"];
-
         let (shape, raw_data) = embed_output.try_extract_tensor::<f32>()?;
         let embed = ArrayView2::from_shape((shape[0] as usize, shape[1] as usize), raw_data)?;
-
         let flat = embed.index_axis(Axis(0), 0).to_owned();
         Ok(l2_normalize(flat))
     }
@@ -164,130 +171,41 @@ impl VisualEncoder for MetaCLIP2B16_384Model {
         self.vision_session.is_some()
     }
 
-    fn embed_images(
-        &mut self,
-        paths: &[PathBuf],
-        run_options: Option<&RunOptions<NoSelectedOutputs>>,
-    ) -> FilesEmbedResult {
-        if self.vision_session.is_none() {
-            return Err(AppError::ModelNotReady);
-        }
-
-        let w = self.input_img_w_and_h as usize;
-        let h = self.input_img_w_and_h as usize;
-
-        let imgs: Vec<Result<Vec<f32>, AppError>> = paths
-            .par_iter()
-            .map(|path| clip_prepare_image(path, w, h, MEAN, STD))
-            .collect();
-
-        let mut batch = vec![];
-        let mut errors: Vec<Option<AppError>> = vec![];
-        for res in imgs {
-            match res {
-                Ok(vec) => {
-                    errors.push(None);
-                    batch.push(vec);
-                }
-                Err(e) => {
-                    errors.push(Some(e));
-                }
-            }
-        }
-
-        let batch_size = batch.len();
-        if batch_size == 0 {
-            let result: Vec<FileEmbedResult> = paths
-                .iter()
-                .zip(errors.iter())
-                .map(|(path, err)| (path.clone(), Err(err.clone().unwrap_or(AppError::Unknown))))
-                .collect();
-            return Ok(result);
-        }
-
-        // Assemble successful images into a contiguous batch tensor
-        let flat: Vec<f32> = batch.into_iter().flatten().collect();
-        let pixel_tensor = Array4::from_shape_vec((batch_size, 3, h, w), flat)?;
-
-        let input_values = inputs![
-            "pixel_values" => TensorRef::from_array_view(pixel_tensor.view())?,
-        ];
-        let session = self.vision_session.as_mut().unwrap();
-        let outputs = if let Some(opts) = run_options {
-            session.run_with_options(input_values, opts)?
-        } else {
-            session.run(input_values)?
-        };
-
-        let embed_output = &outputs["image_embeds"];
-        let (shape, raw_data) = embed_output.try_extract_tensor::<f32>()?;
-        let embed_2d = ArrayView2::from_shape((shape[0] as usize, shape[1] as usize), raw_data)?;
-
-        let mut path_iter = paths.iter();
-        let mut embed_iter = embed_2d.outer_iter();
-        let mut result: Vec<FileEmbedResult> = vec![];
-        for err in errors {
-            let path = path_iter.next().unwrap();
-            match err {
-                None => {
-                    let row = embed_iter.next().unwrap();
-                    let row = l2_normalize(row.to_owned());
-                    result.push((path.clone(), Ok(row)));
-                }
-                Some(err_str) => result.push((path.clone(), Err(err_str))),
-            }
-        }
-
-        Ok(result)
+    fn preprocess_image(&self, img: &image::RgbImage) -> Vec<f32> {
+        let size = self.input_img_w_and_h as usize;
+        clip_prepare_rgb(img, size, size, MEAN, STD)
     }
 
     #[cfg(feature = "video")]
-    fn embed_video(
+    fn preprocess_video_frame(&self, frame: &image::RgbImage) -> Vec<f32> {
+        let size = self.input_img_w_and_h as usize;
+        clip_prepare_rgb(frame, size, size, MEAN, STD)
+    }
+
+    fn infer_embeddings(
         &mut self,
-        path: &Path,
-        num_frames: u32,
+        pixel_batch: Vec<Vec<f32>>,
         run_options: Option<&RunOptions<NoSelectedOutputs>>,
-    ) -> FilesEmbedResult {
-        if self.vision_session.is_none() {
-            return Err(AppError::ModelNotReady);
-        }
-
-        let frames = crate::models::video::extract_video_frames(path, num_frames)?;
-
-        let w = self.input_img_w_and_h as usize;
-        let h = self.input_img_w_and_h as usize;
-
-        let frame_tensors: Vec<Vec<f32>> = frames
-            .iter()
-            .map(|frame| clip_prepare_rgb(frame, w, h, MEAN, STD))
-            .collect();
-
-        let batch_size = frame_tensors.len();
-        let flat: Vec<f32> = frame_tensors.into_iter().flatten().collect();
-        let pixel_tensor = Array4::from_shape_vec((batch_size, 3, h, w), flat).map_err(|e| {
-            AppError::ModelInferenceFailed {
-                detail: e.to_string(),
-            }
-        })?;
+    ) -> Result<Array2<f32>, AppError> {
+        let size = self.input_img_w_and_h as usize;
+        let batch_size = pixel_batch.len();
+        let flat: Vec<f32> = pixel_batch.into_iter().flatten().collect();
+        let pixel_tensor = Array4::from_shape_vec((batch_size, 3, size, size), flat)?;
 
         let input_values = inputs![
             "pixel_values" => TensorRef::from_array_view(pixel_tensor.view())?,
         ];
-        let session = self.vision_session.as_mut().unwrap();
+        let session = self
+            .vision_session
+            .as_mut()
+            .ok_or(AppError::ModelNotReady)?;
         let outputs = if let Some(opts) = run_options {
             session.run_with_options(input_values, opts)?
         } else {
             session.run(input_values)?
         };
-
         let embed_output = &outputs["image_embeds"];
         let (shape, raw_data) = embed_output.try_extract_tensor::<f32>()?;
-        let embed_2d = ArrayView2::from_shape((shape[0] as usize, shape[1] as usize), raw_data)?;
-
-        let averaged = embed_2d
-            .mean_axis(Axis(0))
-            .unwrap_or_else(|| Array1::zeros(shape[1] as usize));
-
-        Ok(vec![(path.to_path_buf(), Ok(l2_normalize(averaged)))])
+        Ok(ArrayView2::from_shape((shape[0] as usize, shape[1] as usize), raw_data)?.to_owned())
     }
 }

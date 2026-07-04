@@ -1,4 +1,4 @@
-use crate::{errors::AppError, models::ModelManifest, utils::open_image_as_rgb};
+use crate::{errors::AppError, models::ModelManifest};
 use fast_image_resize::{FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer, images::Image};
 use image::RgbImage;
 use ort::{ep, ep::ExecutionProvider, session::Session};
@@ -91,15 +91,4 @@ pub fn clip_prepare_rgb(
         }
     }
     pixel_buf
-}
-
-pub fn clip_prepare_image(
-    path: &Path,
-    w: usize,
-    h: usize,
-    mean: [f32; 3],
-    std: [f32; 3],
-) -> Result<Vec<f32>, AppError> {
-    let img = open_image_as_rgb(path).map_err(AppError::generic)?;
-    Ok(clip_prepare_rgb(&img, w, h, mean, std))
 }

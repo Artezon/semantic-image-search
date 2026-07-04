@@ -34,22 +34,16 @@ pub fn search(
 
     let query_embedding = match search_type {
         SearchInputType::Text => {
-            if !selected_visual_model
-                .read()
-                .unwrap()
-                .is_text_encoder_loaded()
-            {
+            let mut model = selected_visual_model.write().unwrap();
+            if !model.is_text_encoder_loaded() {
                 return Err(AppError::ModelNotReady);
             }
 
-            selected_visual_model.write().unwrap().embed_text(&query)?
+            model.embed_text(&query, None)?
         }
         SearchInputType::Image => {
-            if !selected_visual_model
-                .read()
-                .unwrap()
-                .is_vision_encoder_loaded()
-            {
+            let mut model = selected_visual_model.write().unwrap();
+            if !model.is_vision_encoder_loaded() {
                 return Err(AppError::ModelNotReady);
             }
 
@@ -58,14 +52,7 @@ pub fn search(
                 return Err(AppError::InvalidImagePath);
             }
 
-            let mut query_img_embed = selected_visual_model
-                .write()
-                .unwrap()
-                .embed_images(&[path], None)?;
-            if query_img_embed.is_empty() {
-                return Err(AppError::InvalidImagePath);
-            }
-            query_img_embed.remove(0).1?
+            model.embed_images(&[path], None)?.remove(0).embedding?
         }
     }
     .to_vec();

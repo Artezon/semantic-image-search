@@ -1,5 +1,6 @@
 use crate::errors::AppError;
 use crate::utils::open_image_as_rgb;
+use crate::video::extract_video_frames;
 use image::DynamicImage;
 use image::codecs::jpeg::JpegEncoder;
 use std::path::PathBuf;
@@ -45,12 +46,8 @@ pub async fn get_thumbnail(path: String, file_type: String) -> Result<ThumbnailR
 
 #[cfg(feature = "video")]
 fn generate_video_thumbnail(path: &PathBuf) -> Result<ThumbnailResult, AppError> {
-    let frame = crate::models::video::extract_video_frames(path, 1)?
-        .into_iter()
-        .next()
-        .unwrap();
-
-    encode_jpeg(DynamicImage::ImageRgb8(frame))
+    let frame = extract_video_frames(path, 1)?.swap_remove(0);
+    encode_jpeg(&DynamicImage::ImageRgb8(frame))
 }
 
 #[cfg(not(feature = "video"))]
@@ -62,10 +59,10 @@ fn generate_video_thumbnail(_path: &PathBuf) -> Result<ThumbnailResult, AppError
 
 fn generate_image_thumbnail(path: &PathBuf) -> Result<ThumbnailResult, AppError> {
     let img = open_image_as_rgb(path).map_err(AppError::generic)?;
-    encode_jpeg(DynamicImage::ImageRgb8(img))
+    encode_jpeg(&DynamicImage::ImageRgb8(img))
 }
 
-fn encode_jpeg(img: DynamicImage) -> Result<ThumbnailResult, AppError> {
+fn encode_jpeg(img: &DynamicImage) -> Result<ThumbnailResult, AppError> {
     let img = img.thumbnail(THUMBNAIL_MAX_PX, THUMBNAIL_MAX_PX);
     let mut buf = vec![];
     JpegEncoder::new_with_quality(&mut buf, THUMBNAIL_JPEG_QUALITY)
