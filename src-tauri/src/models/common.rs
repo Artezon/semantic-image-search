@@ -5,22 +5,24 @@ use ort::{ep, ep::ExecutionProvider, session::Session};
 use std::path::Path;
 use tokenizers::tokenizer::Tokenizer;
 
+fn has_nvidia_gpu() -> bool {
+    unsafe { libloading::Library::new("nvcuda.dll").is_ok() }
+}
+
 pub fn build_session(
     models_base_dir: &Path,
     manifest: &ModelManifest,
     file_index: usize,
     cpu_only: bool,
 ) -> Result<(Session, &'static str), AppError> {
-    let cuda = ep::CUDA::default();
-
     let mut builder = Session::builder().map_err(|e| AppError::ModelLoadFailed {
         detail: e.to_string(),
         model_name: manifest.name,
     })?;
-    let device = if cpu_only {
+    let device = if cpu_only || !has_nvidia_gpu() {
         "CPU"
     } else {
-        if cuda.register(&mut builder).is_ok() {
+        if ep::CUDA::default().register(&mut builder).is_ok() {
             "NVIDIA GPU (CUDA)"
         } else {
             "CPU"
