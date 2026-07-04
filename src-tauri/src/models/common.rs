@@ -5,8 +5,8 @@ use ort::{ep, ep::ExecutionProvider, session::Session};
 use std::path::Path;
 use tokenizers::tokenizer::Tokenizer;
 
-fn has_nvidia_gpu() -> bool {
-    unsafe { libloading::Library::new("nvcuda.dll").is_ok() }
+fn has_directml() -> bool {
+    unsafe { libloading::Library::new("directml.dll").is_ok() }
 }
 
 pub fn build_session(
@@ -19,11 +19,11 @@ pub fn build_session(
         detail: e.to_string(),
         model_name: manifest.name,
     })?;
-    let device = if cpu_only || !has_nvidia_gpu() {
+    let device = if cpu_only || !has_directml() {
         "CPU"
     } else {
-        if ep::CUDA::default().register(&mut builder).is_ok() {
-            "NVIDIA GPU (CUDA)"
+        if ep::DirectML::default().register(&mut builder).is_ok() {
+            "GPU (DirectML)"
         } else {
             "CPU"
         }

@@ -41,9 +41,9 @@ ffmpeg-sidecar = { version = "2.5", default-features = false, optional = true }
 tauri-plugin-window-state = "2"
 
 [features]
-default = ["portable", "cuda", "video", "advanced-image-formats"]
+default = ["portable", "windows_directml", "video", "advanced-image-formats"]
 portable = []
-cuda = ["ort/cuda"]
+windows_directml = ["ort/directml"]
 video = ["ffmpeg-sidecar"]
 advanced-image-formats = ["libheif-rs", "image/avif-native"]
 

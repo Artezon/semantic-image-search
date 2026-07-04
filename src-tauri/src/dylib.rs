@@ -7,7 +7,7 @@ struct DylibEntry {
     required: bool,
 }
 
-static DYLIB_LIST: [DylibEntry; 15] = [
+static DYLIB_LIST: [DylibEntry; 5] = [
     DylibEntry {
         filename: "vcruntime140.dll",
         required: false,
@@ -22,46 +22,6 @@ static DYLIB_LIST: [DylibEntry; 15] = [
     },
     DylibEntry {
         filename: "msvcp140_1.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "cublas64_13.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "cublasLt64_13.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "cudnn64_9.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "cudnn_graph64_9.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "cudnn_engines_precompiled64_9.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "cudnn_engines_runtime_compiled64_9.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "cudnn_ops64_9.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "cufft64_12.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "nvrtc-builtins64_130.dll",
-        required: false,
-    },
-    DylibEntry {
-        filename: "nvrtc64_130_0.dll",
         required: false,
     },
     DylibEntry {
