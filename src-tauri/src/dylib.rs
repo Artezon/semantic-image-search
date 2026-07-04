@@ -7,7 +7,23 @@ struct DylibEntry {
     required: bool,
 }
 
-static DYLIB_LIST: [DylibEntry; 11] = [
+static DYLIB_LIST: [DylibEntry; 15] = [
+    DylibEntry {
+        filename: "vcruntime140.dll",
+        required: false,
+    },
+    DylibEntry {
+        filename: "vcruntime140_1.dll",
+        required: false,
+    },
+    DylibEntry {
+        filename: "msvcp140.dll",
+        required: false,
+    },
+    DylibEntry {
+        filename: "msvcp140_1.dll",
+        required: false,
+    },
     DylibEntry {
         filename: "cublas64_13.dll",
         required: false,
