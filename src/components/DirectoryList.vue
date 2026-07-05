@@ -10,7 +10,7 @@
     >
       <div v-for="dir in indexedDirs" :key="dir" class="dir-row">
         <span class="drag-handle">☰</span>
-        <span class="dir-path" :title="dir">{{ dir }}</span>
+        <span class="dir-path" @dblclick="openPath(dir)" :title="dir">{{ dir }}</span>
         <button class="btn icon-btn" @click="removeDirectory(dir)">
           <CloseIcon />
         </button>
@@ -25,6 +25,7 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { indexedDirs } from "../store";
 import { CloseIcon } from "./icons";
 import { VueDraggable } from "vue-draggable-plus";
