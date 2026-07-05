@@ -1,14 +1,14 @@
 <template>
   <BaseModal
     :title="title"
-    width="460px"
+    width="520px"
     :dismissible="!removing"
     :is-top="isTop"
     @close="onCancel"
   >
     <template v-if="!removing">
       <p v-html="$t('confirm_remove_folder.modal.message', { path: folderPath })" />
-      <p>{{ $t("confirm_remove_folder.modal.description") }}</p>
+      <p v-html="$t('confirm_remove_folder.modal.description')" />
     </template>
     <div v-else class="spinner-wrapper">
       <div class="spinner" />

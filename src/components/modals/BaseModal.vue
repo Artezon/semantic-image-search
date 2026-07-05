@@ -94,6 +94,7 @@ onUnmounted(() => {
   padding: 2px;
   margin: -2px;
   white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .modal-footer {
