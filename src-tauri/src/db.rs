@@ -152,7 +152,7 @@ impl Database {
         })
     }
 
-    pub fn update_directory(&self, dir_path: &str, files: Vec<(PathBuf, FileType)>) -> Result<()> {
+    pub fn update_directory(&self, dir_path: &str, files: Vec<(PathBuf, FileType)>) -> Result<usize> {
         let files: Vec<(String, FileType)> = files
             .into_iter()
             .map(|(p, t)| Ok((absolute(&p)?.display().to_string(), t)))
@@ -188,6 +188,7 @@ impl Database {
                 .filter(|(_, p)| !new_paths.contains(p.as_str()))
                 .map(|(id, _)| *id)
                 .collect();
+            let removed_count = to_remove.len();
             for file_id in to_remove {
                 tx.execute(
                     "DELETE FROM directory_files WHERE directory_id = ?1 AND file_id = ?2",
@@ -213,7 +214,7 @@ impl Database {
             }
 
             tx.commit()?;
-            Ok(())
+            Ok(removed_count)
         })
     }
 

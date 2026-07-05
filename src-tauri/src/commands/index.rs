@@ -19,6 +19,7 @@ use walkdir::WalkDir;
 pub struct IndexingResult {
     processed: usize,
     total: usize,
+    removed: usize,
     elapsed_secs: u64,
     was_paused: bool,
     errors: Vec<(String, AppError)>,
@@ -111,6 +112,7 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
         let mut total = 0usize;
         let mut processed = 0usize;
         let mut skipped = 0usize;
+        let mut removed = 0usize;
         let mut errors: Vec<(String, AppError)> = vec![];
 
         let result = indexing(
@@ -122,6 +124,7 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
             &mut total,
             &mut processed,
             &mut skipped,
+            &mut removed,
             &mut errors,
         );
 
@@ -149,6 +152,7 @@ pub async fn index_directories(app_handle: AppHandle) -> Result<IndexingResult, 
         Ok(IndexingResult {
             processed,
             total,
+            removed,
             elapsed_secs,
             was_paused,
             errors,
@@ -167,6 +171,7 @@ fn indexing(
     total: &mut usize,
     processed: &mut usize,
     skipped: &mut usize,
+    removed: &mut usize,
     errors: &mut Vec<(String, AppError)>,
 ) -> Result<(), AppError> {
     let batch_size = state.config.read().unwrap().batch_size;
@@ -189,16 +194,19 @@ fn indexing(
 
         let dir_path = PathBuf::from(dir_str);
         if !dir_path.is_dir() {
-            continue;
+            clear_index_status(app_handle);
+            return Err(AppError::DirectoryNotFound {
+                detail: dir_str.to_string(),
+            });
         }
 
         let files = collect_files_from_dir(&dir_path);
-        match state.db.update_directory(dir_str, files) {
+        *removed += match state.db.update_directory(dir_str, files) {
             Err(e) if e.downcast_ref() == Some(&rusqlite::Error::QueryReturnedNoRows) => {
                 return Ok(());
             }
             other => other.map_err(|e| e.to_string())?,
-        }
+        };
     }
 
     let all_files_db = state

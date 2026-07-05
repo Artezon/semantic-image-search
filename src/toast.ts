@@ -33,9 +33,9 @@ export function showToast(
 }
 
 export function showIndexingResultToast(result: IndexingResult) {
-  const { processed, total, elapsed_secs, errors } = result;
+  const { processed, total, removed, elapsed_secs, errors } = result;
 
-  if (total === 0) {
+  if (total === 0 && removed === 0) {
     showToast(
       t("indexing.complete.toast.up_to_date.msg"),
       t("indexing.complete.toast.up_to_date.header"),
@@ -50,6 +50,10 @@ export function showIndexingResultToast(result: IndexingResult) {
     total,
     elapsed: formatSeconds(elapsed_secs),
   });
+
+  if (removed > 0) {
+    summary += `\n${t("indexing.complete.toast.removed", { count: removed })}`;
+  }
 
   if (errors.length === 0) {
     showToast(summary, t("indexing.complete.toast.header"), "info");

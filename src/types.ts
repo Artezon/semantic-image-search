@@ -46,6 +46,7 @@ export type IndexStatus = {
 export type IndexingResult = {
   processed: number;
   total: number;
+  removed: number;
   elapsed_secs: number;
   was_paused: boolean;
   errors: [string, AppError][];

@@ -10,6 +10,9 @@ pub enum AppError {
     InvalidDirectory,
     NoIndex,
     AlreadyIndexing,
+    DirectoryNotFound {
+        detail: String,
+    },
     ImageReadFailed {
         detail: String,
     },
