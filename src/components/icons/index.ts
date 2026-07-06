@@ -11,6 +11,7 @@ export { default as PlayIcon } from "./PlayIcon.vue";
 export { default as CloseIcon } from "./RemoveFromLibraryIcon.vue";
 export { default as UpIcon } from "./UpIcon.vue";
 export { default as DownIcon } from "./DownIcon.vue";
+export { default as WarningIcon } from "./Warning.vue";
 
 export { default as ToastInfoIcon } from "./toast/InfoIcon.vue";
 export { default as ToastSuccessIcon } from "./toast/SuccessIcon.vue";

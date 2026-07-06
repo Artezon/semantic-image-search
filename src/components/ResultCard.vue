@@ -8,7 +8,7 @@
 
       <div class="state-loaded" v-else key="loaded">
         <template v-if="error">
-          <div class="error-icon">⚠</div>
+          <WarningIcon class="error-icon" />
           <div class="error-text">{{ $t("search.results.card.preview.error") }}</div>
         </template>
         <template v-else>
@@ -29,6 +29,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
+import { WarningIcon } from "./icons";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { SearchResult } from "../types";
@@ -177,15 +178,14 @@ onUnmounted(() => {
 }
 
 .error-icon {
-  color: red;
-  font-size: 50px;
-  margin-bottom: -15px;
+  color: var(--red);
+  width: 50px;
 }
 
 .error-text {
   font-size: 11px;
   text-align: center;
-  margin-bottom: 45px;
+  margin-bottom: 35px;
   width: 100%;
   padding: 0 10px;
   overflow-wrap: break-word;
