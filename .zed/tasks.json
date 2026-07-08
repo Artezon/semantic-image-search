@@ -6,6 +6,10 @@
     "command": "npm run tauri dev",
   },
   {
+    "label": "Run dev (minimal features)",
+    "command": "npm run tauri dev -- -- --no-default-features --features portable",
+  },
+  {
     "label": "Build release (faster build)",
     "command": "npm run tauri build",
   },
@@ -15,7 +19,7 @@
   },
   {
     "label": "Build release (minimal distribution)",
-    "command": "npm run tauri build -- -- --profile release-opt --no-default-features --features portable,cuda",
+    "command": "npm run tauri build -- -- --profile release-opt --no-default-features --features portable",
   },
   {
     "label": "Format code",

@@ -20,19 +20,15 @@ Currently only MetaCLIP 2 model is supported
 <img src="https://github.com/user-attachments/assets/4ddefa7a-b2df-4aec-b8ad-3e07b4617b2f" />
 
 ### To compile with advanced image formats support (HEIC, HEIF, AVIF):
-Install vcpkg to `C:\vcpkg`:
+Install vcpkg, e.g. to `C:\vcpkg`:
 ```
 git clone https://github.com/microsoft/vcpkg.git
 cd vcpkg
 .\bootstrap-vcpkg.bat -disableMetrics
 vcpkg integrate install
-winget install LLVM.LLVM
-[Environment]::SetEnvironmentVariable("VCPKG_ROOT", "C:\vcpkg", "User")
-[Environment]::SetEnvironmentVariable("Path", "C:\vcpkg;$env:Path", "User")
-[Environment]::SetEnvironmentVariable("PKG_CONFIG_PATH", "C:\vcpkg\installed\x64-windows\lib\pkgconfig;C:\vcpkg\installed\x64-windows-static\lib\pkgconfig", "User")
 ```
 Install those libraries:
 ```
-vcpkg install libheif:x64-windows-static
-vcpkg install dav1d:x64-windows-static
+vcpkg install libheif:x64-windows-static dav1d:x64-windows-static
 ```
+Edit paths in `.cargo/config.toml` to match your vcpkg installation accordingly.
